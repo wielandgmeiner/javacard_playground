@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="sextoys" name="JavaCardPlayground build">
+  <!-- Applet building dependencies -->
+  <property name="JC221" value="ext/java_card_kit-2_2_1"/>
+  <property name="JC222" value="ext/java_card_kit-2_2_2"/>
+  <property name="JC303" value="ext/java_card_kit-3_0_3"/>
+  <property name="GP211" value="ext/globalplatform-2_1_1"/>
+
+  <!-- ant-javacard task from javacard.pro -->
+  <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ant-javacard.jar"/>
+  <!-- All included applets -->
+  <target name="sextoys">
+    <javacard jckit="${JC222}">
+      <cap output="Teapot.cap" sources="src/teapot">
+        <applet class="sextoys.Teapot" aid="B00B5111CA01"/>
+      </cap>
+    </javacard>
+  </target>
+</project>
