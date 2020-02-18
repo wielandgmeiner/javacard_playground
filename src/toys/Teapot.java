@@ -1,5 +1,5 @@
 // define package name.
-package sextoys;
+package toys;
 
 // import using java card API interface.
 import javacard.framework.*;

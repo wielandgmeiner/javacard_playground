@@ -62,7 +62,7 @@ alias gp="java -jar $PWD/gp.jar"
 Run to compile all applets:
 
 ```sh
-ant sextoys
+ant toys
 ```
 
 You should get `.cap` files for all the applets in the root folder.
