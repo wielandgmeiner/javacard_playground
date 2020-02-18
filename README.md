@@ -6,8 +6,8 @@ Work in progress, this is a description of what it should look like at the end:
 
 ## `Teapot`
 
-Stores a phrase `I am a teapot gimme some tea plz` or any other 32-byte secret you want to store.
-No PIN, no authentication - just stores a 32-byte sequence.
+Stores a phrase `I am a teapot gimme some tea plz` or any other secret you want to store.
+No PIN, no authentication - just stores the secret. Length of the secret can be up to 64 bytes.
 
 ## `MemoryCard`
 

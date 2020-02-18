@@ -1,5 +1,3 @@
-// copy-paste of hello world for now
-
 // define package name.
 package sextoys;
 
@@ -18,10 +16,15 @@ public class Teapot extends Applet{
    private static final byte INS_GET                  = (byte)0xA1;
    private static final byte INS_PUT                  = (byte)0xA2;
 
-   private static final byte MAX_SIZE                 = (byte)32;
+   private static final byte MAX_SIZE                 = (byte)64;
 
    // Default secret
    private byte[] secret = {
+      'I',' ','a','m',' ','a',' ','t',
+      'e','a','p','o','t',' ','g','i',
+      'm','m','e',' ','s','o','m','e',
+      ' ','t','e','a',' ','p','l','z',
+      // Dummy data. Do I need it?
       'I',' ','a','m',' ','a',' ','t',
       'e','a','p','o','t',' ','g','i',
       'm','m','e',' ','s','o','m','e',
@@ -71,6 +74,7 @@ public class Teapot extends Applet{
          }
          // copy content of the buffer to the secret array
          secretlen = buf[ISO7816.OFFSET_LC];
+         // should be atomic
          Util.arrayCopy(buf, (short)ISO7816.OFFSET_CDATA, secret, (short)0, (short)secretlen);
          SendData(apdu);
          break;
