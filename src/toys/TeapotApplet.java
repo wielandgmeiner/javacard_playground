@@ -12,24 +12,24 @@ import javacard.framework.*;
 public class TeapotApplet extends Applet{
 
     // Define the value of CLA/INS in APDU, you can also define P1, P2.
-    private static final byte CLA_TEAPOT               = (byte)0xB0;
-    private static final byte INS_GET                  = (byte)0xA1;
-    private static final byte INS_PUT                  = (byte)0xA2;
+    protected static final byte CLA_TEAPOT               = (byte)0xB0;
+    protected static final byte INS_GET                  = (byte)0xA1;
+    protected static final byte INS_PUT                  = (byte)0xA2;
 
-    private static final short MAX_DATA_LENGTH          = (short)255;
+    protected static final short MAX_DATA_LENGTH          = (short)255;
 
     // Default data
-    private DataEntry data = null;
+    protected DataEntry data = null;
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
     public static void install(byte[] bArray, short bOffset, byte bLength){
         // Only one applet instance can be successfully registered each time 
         // the JCRE calls the Applet.install method.
-        new TeapotApplet(bArray, bOffset, bLength);
+        new TeapotApplet().register(bArray, (short) (bOffset + 1), bArray[bOffset]);
     }
 
-    public TeapotApplet(byte[] bArray, short bOffset, byte bLength) {
+    public TeapotApplet(){
         if (data == null){
             data = new DataEntry(MAX_DATA_LENGTH);
         }
@@ -40,7 +40,6 @@ public class TeapotApplet extends Applet{
             ' ', 't', 'e', 'a', ' ', 'p', 'l', 'z' 
         };
         data.put(defaultData, (short)0, (short)defaultData.length);
-        register(bArray, (short) (bOffset + 1), bArray[bOffset]);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -83,7 +82,7 @@ public class TeapotApplet extends Applet{
     }
     
     // stores data in the `data` field
-    private void StoreData(APDU apdu){
+    protected void StoreData(APDU apdu){
         byte[] buf = apdu.getBuffer();
         // cast signed byte to unsigned short
         short len = buf[ISO7816.OFFSET_LC];
@@ -100,7 +99,7 @@ public class TeapotApplet extends Applet{
     }
 
     // sends data from the `data` field
-    private void SendData(APDU apdu){
+    protected void SendData(APDU apdu){
         apdu.setOutgoing();
         apdu.setOutgoingLength(data.length());
         apdu.sendBytesLong(data.get(), (short)0, data.length());

@@ -14,6 +14,9 @@
       <cap output="TeapotApplet.cap" sources="src/toys">
         <applet class="toys.TeapotApplet" aid="B00B5111CA01"/>
       </cap>
+      <cap output="MemoryCardApplet.cap" sources="src/toys">
+        <applet class="toys.MemoryCardApplet" aid="B00B5111CB01"/>
+      </cap>
     </javacard>
   </target>
 </project>
