@@ -60,7 +60,7 @@ You should get `.cap` files for all the applets in the root folder.
 Now upload applet to the card:
 
 ```sh
-gp -install Teapot.cap
+gp -install TeapotApplet.cap
 ```
 
 Check that it appeared in the list of applets (should appear with aid `B00B5111CA01`):

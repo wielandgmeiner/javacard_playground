@@ -11,8 +11,8 @@
   <!-- All included applets -->
   <target name="toys">
     <javacard jckit="${JC222}">
-      <cap output="Teapot.cap" sources="src/toys">
-        <applet class="toys.Teapot" aid="B00B5111CA01"/>
+      <cap output="TeapotApplet.cap" sources="src/toys">
+        <applet class="toys.TeapotApplet" aid="B00B5111CA01"/>
       </cap>
     </javacard>
   </target>

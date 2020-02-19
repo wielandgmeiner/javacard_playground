@@ -6,10 +6,10 @@ import javacard.framework.*;
 
 /* 
  * Package: toys
- * Filename: Teapot.java 
- * Class: Teapot
+ * Filename: TeapotApplet.java 
+ * Class: TeapotApplet
  */
-public class Teapot extends Applet{
+public class TeapotApplet extends Applet{
 
     // Define the value of CLA/INS in APDU, you can also define P1, P2.
     private static final byte CLA_TEAPOT               = (byte)0xB0;
@@ -26,10 +26,10 @@ public class Teapot extends Applet{
     public static void install(byte[] bArray, short bOffset, byte bLength){
         // Only one applet instance can be successfully registered each time 
         // the JCRE calls the Applet.install method.
-        new Teapot(bArray, bOffset, bLength);
+        new TeapotApplet(bArray, bOffset, bLength);
     }
 
-    public Teapot(byte[] bArray, short bOffset, byte bLength) {
+    public TeapotApplet(byte[] bArray, short bOffset, byte bLength) {
         if (data == null){
             data = new DataEntry(MAX_DATA_LENGTH);
         }
