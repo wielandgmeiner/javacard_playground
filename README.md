@@ -1,27 +1,17 @@
 # JavaCardOS applets
 
-I hate Java and JavaCardOS, but it is the only way to get some hardware security without NDA. So we have to live with it.
+I don't like Java and JavaCardOS, but it is the only way to get some hardware security without NDA. So we have to live with it.
 
-Work in progress, this is a description of what it should look like at the end:
+Work in progress, documentation for classes and applets is in the [`doc/`](./doc) folder.
 
-## `Teapot`
+## Applets
 
-Stores a phrase `I am a teapot gimme some tea plz` or any other secret you want to store.
-No PIN, no authentication - just stores the secret. Length of the secret can be up to 64 bytes.
+- [`Teapot`](./doc/Teapot.md) - a very simple "Hello world" class that doesn't use any PIN protection or secure communication. It can only store up to 64 bytes of data and give it back on request. Perfect for testing communication with the card.
+- [`MemoryCard`](./doc/MemoryCard.md) - adds PIN protection and secure communication. All functionality of the `Teapot` is still there.
+- [`BlindOracle`](./doc/BlindOracle.md) - allows bip32 and bip39 key derivation so the key never leaves the card. Includes nonce blinding protocol to minimize trust in proprietary stuff deployed on the card. All functionality of the `MemoryCard` is still there.
+- [`HardwareSpaghettiMonster`](./doc/HardwareSpaghettiMonster.md) - should add custom policies to the card.
 
-## `MemoryCard`
-
-Extends `Teapot`, adds PIN protection and secure communication
-
-## `BlindOracle`
-
-Extends `MemoryCard`.
-Adds another slot for a 64-byte key that is write-only - you can load a key to this slot or generate one on the card, and then use bip-32 to derive new keys, and sign arbitrary messages.
-Curve - `secp256k1`, signature - `ECDSA`.
-
-## `HardwareSpaghettiMonster`
-
-Extends `BlindOracle` with custom policies.
+For `Teapot` and `MemoryCard` any JavaCard should work. For `BlindOracle` or `HardwareSpaghettiMonster` [NXP J3H145](https://www.smartcardfocus.com/shop/ilp/id~879/nxp-j3h145-dual-interface-java-card-144k/p/index.shtml) should work fine.
 
 # Toolchain installation for Mac
 
