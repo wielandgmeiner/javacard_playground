@@ -1,10 +1,10 @@
 # `Teapot`
 
-A very simple "Hello world" class that doesn't use any PIN protection or secure communication. It can only store up to 64 bytes of data and give it back on request. Perfect for testing communication with the card.
+A very simple "Hello world" class that doesn't use any PIN protection or secure communication. It can only store up to `255` bytes of data and give it back on request. Perfect for testing communication with the card.
 
 By default the phrase is `I am a teapot gimme some tea plz`.
 
-Maximum storage size - `64` bytes.
+Maximum storage size - `255` bytes.
 
 ## APDUs
 
@@ -12,7 +12,7 @@ Applet ID: `B00B5111CA01`
 
 To select applet use `SELECT` APDU: `00A4040006B00B5111CA0100`
 
-### Get secret
+### Get data
 
 | Field  | Value                                    |
 | ------ | ---------------------------------------- |
@@ -24,7 +24,7 @@ To select applet use `SELECT` APDU: `00A4040006B00B5111CA0100`
 
 Example: `B0A100000000` -> returns stored data
 
-### Store secret
+### Store data
 
 | Field  | Value                                    |
 | ------ | ---------------------------------------- |
@@ -33,7 +33,7 @@ Example: `B0A100000000` -> returns stored data
 | P0, P1 | ignored, use for example `0x00` for both |
 | DATA   | data to store on the card, `64` bytes max  |
 | RETURN | `SW`: `0x9000`, `DATA`: updated data stored on the card |
-| ERRORS | `SW`: `0x6700` (`ISO7816.SW_WRONG_LENGTH`) if data is more than `64` bytes |
+| ERRORS | `SW`: `0x6700` (`ISO7816.SW_WRONG_LENGTH`) if data is more than `255` bytes |
 
 Example: `B0A20000<len><data>00`
 
