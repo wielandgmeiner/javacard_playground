@@ -19,6 +19,13 @@ public class DataEntry{
         bufferMaxLength = maxSize;
         buffer = new byte[maxSize];
     }
+    /**
+     * Stores data on the card and then sends updated data as a responce
+     * @param data   - byte array with data to store
+     * @param offset - start position of the data in the buffer
+     * @param len    - length of the data
+     * @return number of bytes stored. Should be equal to len. 0 if data is too large.
+     */
     public short put(byte[] data, short offset, short len){
         if(len > bufferMaxLength){
             return 0;
@@ -29,15 +36,27 @@ public class DataEntry{
         bufferLength = len;
         return bufferLength;
     }
+    /**
+     * @return internal buffer with the data
+     */
     public byte[] get(){
         return buffer;
     }
+    /**
+     * @return length of the data
+     */
     public short length(){
         return bufferLength;
     }
+    /**
+     * @return buffer capacity
+     */
     public short maxLength(){
         return bufferMaxLength;
     }
+    /**
+     * Erases content of the data
+     */
     public void wipe(){
         byte[] randombuffer = new byte[bufferMaxLength];
         Util.arrayCopy(randombuffer, (short)0, buffer, (short)0, bufferMaxLength);

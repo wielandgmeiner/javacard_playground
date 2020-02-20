@@ -1,5 +1,9 @@
 # ToDo
 
+*Note* We should reimplement the PIN verification mechanism as we don't trust proprietary stuff. Especially because it may be implemented poorly on different card models.
+
+*Note* We should also implement our own secure communication protocol, same reasons.
+
 - secure communication protocol (auth-enc), probably using DH
 - store 32-byte secret(s)
 - set 32-byte "pin code" (tagged_hash("CardUnlock", device_secret || pin_code))

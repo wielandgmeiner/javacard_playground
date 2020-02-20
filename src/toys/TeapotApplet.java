@@ -13,10 +13,12 @@ public class TeapotApplet extends Applet{
 
     // Define the value of CLA/INS in APDU, you can also define P1, P2.
     protected static final byte CLA_TEAPOT               = (byte)0xB0;
+    // Get data from the card 
     protected static final byte INS_GET                  = (byte)0xA1;
+    // Put data to the card (update)
     protected static final byte INS_PUT                  = (byte)0xA2;
-
-    protected static final short MAX_DATA_LENGTH          = (short)255;
+    // Max storage
+    protected static final short MAX_DATA_LENGTH         = (short)255;
 
     // Default data
     protected DataEntry data = null;
@@ -47,8 +49,7 @@ public class TeapotApplet extends Applet{
         // Select the Applet, through the select method, this applet is selectable, 
         // After successful selection, all APDUs are delivered to the currently selected applet
         // via the process method.
-        if (selectingApplet())
-        {
+        if (selectingApplet()){
             return;
         }
         // Get the APDU buffer byte array.
@@ -81,7 +82,10 @@ public class TeapotApplet extends Applet{
         }
     }
     
-    // stores data in the `data` field
+    /**
+     * Stores data on the card and then sends updated data as a responce
+     * @param apdu the APDU buffer
+     */
     protected void StoreData(APDU apdu){
         byte[] buf = apdu.getBuffer();
         // cast signed byte to unsigned short
@@ -98,7 +102,10 @@ public class TeapotApplet extends Applet{
         SendData(apdu);
     }
 
-    // sends data from the `data` field
+    /**
+     * Sends data from the card in APDU responce
+     * @param apdu the APDU buffer
+     */
     protected void SendData(APDU apdu){
         apdu.setOutgoing();
         apdu.setOutgoingLength(data.length());
