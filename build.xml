@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project basedir="." default="toys" name="JavaCardPlayground build">
   <!-- Applet building dependencies -->
-  <property name="JC221" value="ext/java_card_kit-2_2_1"/>
-  <property name="JC222" value="ext/java_card_kit-2_2_2"/>
-  <property name="JC303" value="ext/java_card_kit-3_0_3"/>
-  <property name="GP211" value="ext/globalplatform-2_1_1"/>
+  <property name="JC221" value="sdks/jc211_kit"/>
+  <property name="JC222" value="sdks/jc222_kit"/>
+  <property name="JC303" value="sdks/jc303_kit"/>
+  <property name="JC304" value="sdks/jc304_kit"/>
+  <property name="JC305" value="sdks/jc305u3_kit"/>
 
   <!-- ant-javacard task from javacard.pro -->
   <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ant-javacard.jar"/>
   <!-- All included applets -->
   <target name="toys">
-    <javacard jckit="${JC222}">
+    <javacard jckit="${JC304}">
       <cap output="TeapotApplet.cap" sources="src/toys">
         <applet class="toys.TeapotApplet" aid="B00B5111CA01"/>
       </cap>

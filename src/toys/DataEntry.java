@@ -1,7 +1,5 @@
-// define package name.
 package toys;
 
-// import using java card API interface.
 import javacard.framework.*;
 
 /* 
