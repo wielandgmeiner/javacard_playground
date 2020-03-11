@@ -1,6 +1,7 @@
 package toys;
 
 import javacard.framework.*;
+import javacard.security.*;
 
 /* 
  * Package: toys
@@ -11,11 +12,13 @@ public class DataEntry{
     private byte[] buffer;
     private short bufferLength = (short)0;
     private short bufferMaxLength = (short)0;
+    private RandomData rng;
 
     public DataEntry(short maxSize){
         // if maxSize < 0 -> throw error
         bufferMaxLength = maxSize;
         buffer = new byte[maxSize];
+        rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
     }
     /**
      * Stores data on the card and then sends updated data as a responce
@@ -56,7 +59,6 @@ public class DataEntry{
      * Erases content of the data
      */
     public void wipe(){
-        byte[] randombuffer = new byte[bufferMaxLength];
-        Util.arrayCopy(randombuffer, (short)0, buffer, (short)0, bufferMaxLength);
+        rng.generateData(buffer, (short)0, bufferMaxLength);
     }
 }

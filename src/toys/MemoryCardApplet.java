@@ -53,8 +53,8 @@ public class MemoryCardApplet extends Applet{
     // Max storage
     protected static final short MAX_DATA_LENGTH         = (short)255;
 
-    protected static final byte PIN_MAX_LENGTH = (byte)32;
-    protected static final byte PIN_MAX_COUNTER = (byte)10;
+    protected static final byte PIN_MAX_LENGTH           = (byte)32;
+    protected static final byte PIN_MAX_COUNTER          = (byte)10;
 
     protected OwnerPIN pin = null;
     protected DataEntry secretData = null;
@@ -75,9 +75,10 @@ public class MemoryCardApplet extends Applet{
 
         secp256k1 = new SECP256k1();
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+        // generate random secret
         secret = new byte[32];
         rng.generateData(secret, (short)0, (short)32);
-        // make sure at first nobody can talk to the card
+        // fill with rng to make sure at first nobody can talk to the card
         sharedSecret = new byte[32];
         rng.generateData(sharedSecret, (short)0, (short)32);
         // Default data
@@ -141,17 +142,13 @@ public class MemoryCardApplet extends Applet{
      * @param apdu the APDU buffer
      */
     protected void SendPubkey(APDU apdu){
-        apdu.setOutgoing();
-        byte[] pubOut = new byte[65];
-        secp256k1.derivePublicKey(secret, (short)0, pubOut, (short)0);
-        apdu.setOutgoingLength((short)65);
-        apdu.sendBytesLong(pubOut, (short)0, (short)65);
+        byte[] buf = apdu.getBuffer();
+        secp256k1.derivePublicKey(secret, (short)0, buf, (short)0);
+        apdu.setOutgoingAndSend((short) 0, (short)65);
     }
     protected void SendRandom(APDU apdu){
-        apdu.setOutgoing();
-        byte[] rand = new byte[32];
-        rng.generateData(rand, (short)0, (short)32);
-        apdu.setOutgoingLength((short)32);
-        apdu.sendBytesLong(rand, (short)0, (short)32);
+        byte[] buf = apdu.getBuffer();
+        rng.generateData(buf, (short)0, (short)32);
+        apdu.setOutgoingAndSend((short) 0, (short)32);
     }
 }
