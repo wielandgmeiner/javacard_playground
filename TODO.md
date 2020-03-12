@@ -13,3 +13,11 @@
 - anti-tamper challenge -> 32-byte challenge -> sign with secret -> ecdsa signature
 - anti-tamper counter
 - ripemd160 lib? - we need it for xpub fingerprints, but it's not must-have
+
+# Secure communication
+
+At the moment we use x-coordinate of ECDH for shared key and `ALG_AES_CBC_ISO9797_M2` as AEAD scheme.
+
+We should switch to Noise_chacha20poly1305_secp256k1. Concerns here - homebrew implementation of chacha20poly1305 might be vulnerable to attacks. Would it be better to use AES_CBC with SHA256?
+
+In any case key rotation is important, so Noise for sure.

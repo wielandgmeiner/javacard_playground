@@ -4,6 +4,7 @@ package toys;
 // import using java card API interface.
 import javacard.framework.*;
 import javacard.security.*;
+import javacardx.crypto.Cipher;
 
 /* 
  * Package: toys
@@ -62,10 +63,14 @@ public class MemoryCardApplet extends Applet{
     private SECP256k1 secp256k1;
     private RandomData rng;
     private MessageDigest sha256;
+    private Cipher cipher;
 
     private KeyPair uniqueKeyPair;
     // private byte[] secret;
     private byte[] sharedSecret;
+    private Key sharedKey;
+    private byte[] iv;
+    private byte[] tempBuffer;
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -76,15 +81,25 @@ public class MemoryCardApplet extends Applet{
     }
     public MemoryCardApplet(){
 
+        // crypto primitives
         secp256k1 = new SECP256k1();
         sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+        cipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
+
         // generate random secret key for secure communication
         uniqueKeyPair = secp256k1.newKeyPair();
         uniqueKeyPair.genKeyPair();
         // fill with rng to make sure at first nobody can talk to the card
-        sharedSecret = new byte[32];
+        sharedSecret = JCSystem.makeTransientByteArray((short)32, JCSystem.CLEAR_ON_DESELECT);
         rng.generateData(sharedSecret, (short)0, (short)32);
+        iv = JCSystem.makeTransientByteArray((short)16, JCSystem.CLEAR_ON_DESELECT);
+        rng.generateData(iv, (short)0, (short)16);
+        // temporary buffer for stuff
+        tempBuffer = JCSystem.makeTransientByteArray(MAX_DATA_LENGTH, JCSystem.CLEAR_ON_DESELECT);
+
+        sharedKey = KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
+        ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
         // Default data
         byte[] defaultData = { 
             'M', 'e', 'm', 'o', 'r', 'y', ' ', 'c', 
@@ -97,6 +112,8 @@ public class MemoryCardApplet extends Applet{
             secretData = new DataEntry(MAX_DATA_LENGTH);
         }
         secretData.put(defaultData, (short)0, (short)defaultData.length);
+
+        JCSystem.requestObjectDeletion();
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -129,11 +146,30 @@ public class MemoryCardApplet extends Applet{
         case INS_PERFORM_ECDH:
             EstablishSharedSecret(apdu);
             break;
+        case (byte)0xA4:
+            Encrypt(apdu);
+            break;
         default:
             // If you don't know the INS, throw an exception.
             // ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
             SendHello(apdu);
         }
+    }
+    protected void Encrypt(APDU apdu){
+        byte[] buf = apdu.getBuffer();
+        short len = buf[ISO7816.OFFSET_LC];
+        rng.generateData(iv, (short)0, (short)16);
+        cipher.init(sharedKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
+        len = cipher.doFinal(buf, ISO7816.OFFSET_CDATA, len, tempBuffer, (short)0);
+        Util.arrayCopy(iv, (short)0, buf, (short)0, (short)16);
+        Util.arrayCopy(tempBuffer, (short)0, buf, (short)16, len);
+        len += 16;
+        // replace with hmac
+        sha256.update(sharedSecret, (short)0, (short)32);
+        sha256.update(buf, (short)0, (short)len);
+        sha256.doFinal(sharedSecret, (short)0, (short)32, buf, len);
+        len += 32;
+        apdu.setOutgoingAndSend((short)0, len);
     }
     /**
      * Sends data from the card in APDU responce
@@ -174,6 +210,7 @@ public class MemoryCardApplet extends Applet{
         KeyAgreement ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
         ecdh.init((ECPrivateKey)uniqueKeyPair.getPrivate());
         ecdh.generateSecret(buf, ISO7816.OFFSET_CDATA, (short)65, sharedSecret, (short)0);
+        ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
         // sending sha256 of the shared secret
         sha256.doFinal(sharedSecret, (short)0, (short)32, buf, (short)0);
         apdu.setOutgoingAndSend((short)0, (short)32);
