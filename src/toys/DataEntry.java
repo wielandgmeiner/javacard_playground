@@ -1,3 +1,4 @@
+/* Do what the fuck you want license. */
 package toys;
 
 import javacard.framework.*;
@@ -56,7 +57,7 @@ public class DataEntry{
         return bufferMaxLength;
     }
     /**
-     * Erases content of the data
+     * Erases content of the data with random junk
      */
     public void wipe(){
         rng.generateData(buffer, (short)0, bufferMaxLength);

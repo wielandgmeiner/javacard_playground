@@ -1,19 +1,24 @@
+/* Do what the fuck you want license. */
 package toys;
 
 import javacard.framework.*;
 import javacard.security.*;
+
 /**
  * HMAC for any MessageDigest instance.
  */
 public class HMACDigest {
+
   static final byte IPAD = (byte) 0x36;
   static final byte OPAD = (byte) 0x5c;
+
   static final short ALG_SHA_256_BLOCK_SIZE = (short)64;
-  static final short ALG_SHA_512_BLOCK_SIZE = (short)128; 
-  private MessageDigest hash = null;
-  private byte[] intBuf;
-  private byte[] key; // FIXME: should be a Key
-  private short blockSize;
+  static final short ALG_SHA_512_BLOCK_SIZE = (short)128;
+
+  private MessageDigest hash; // hash function
+  private byte[] key;         // FIXME: should be a Key
+  private byte[] intBuf;      // temp buffer for internal use
+  private short blockSize;    // block size of the hash function
 
   /**
    * Allocates stuff.
@@ -30,6 +35,7 @@ public class HMACDigest {
     intBuf = JCSystem.makeTransientByteArray(hash.getLength(), JCSystem.CLEAR_ON_DESELECT);
     key = JCSystem.makeTransientByteArray(blockSize, JCSystem.CLEAR_ON_DESELECT);
   }
+
   /**
    * Initializes HMAC with a key
    * @param hmacKey buffer with the key for HMAC
@@ -51,6 +57,7 @@ public class HMACDigest {
     hash.reset();
     hash.update(key, (short)0, blockSize);
   }
+
   /**
    * Updates HMAC with a message
    * @param msg     buffer with the message
@@ -60,6 +67,7 @@ public class HMACDigest {
   public void update(byte[] msg, short offset, short len){
     hash.update(msg, offset, len);
   }
+
   /**
    * Expected length of the HMAC output.
    * 
@@ -68,6 +76,7 @@ public class HMACDigest {
   public short getLength(){
     return hash.getLength();
   }
+
   /**
    * Finalizes HMAC with a message
    * @param msg     buffer with the message
@@ -87,6 +96,7 @@ public class HMACDigest {
     hash.update(key, (short)0, blockSize);
     return hash.doFinal(intBuf, (short)0, hash.getLength(), outBuf, outOffset);
   }
+
   /**
    * Clean up. No real need in it - .init() will reset everything anyways.
    */
