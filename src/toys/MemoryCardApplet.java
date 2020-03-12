@@ -63,7 +63,9 @@ public class MemoryCardApplet extends Applet{
     private SECP256k1 secp256k1;
     private RandomData rng;
     private MessageDigest sha256;
+    private HMACDigest hmac_sha256;
     private Cipher cipher;
+    private KeyAgreement ecdh;
 
     private KeyPair uniqueKeyPair;
     // private byte[] secret;
@@ -84,6 +86,8 @@ public class MemoryCardApplet extends Applet{
         // crypto primitives
         secp256k1 = new SECP256k1();
         sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
+        hmac_sha256 = new HMACDigest(sha256, HMACDigest.ALG_SHA_256_BLOCK_SIZE);
+        ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
         cipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
@@ -161,14 +165,11 @@ public class MemoryCardApplet extends Applet{
         rng.generateData(iv, (short)0, (short)16);
         cipher.init(sharedKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
         len = cipher.doFinal(buf, ISO7816.OFFSET_CDATA, len, tempBuffer, (short)0);
-        Util.arrayCopy(iv, (short)0, buf, (short)0, (short)16);
-        Util.arrayCopy(tempBuffer, (short)0, buf, (short)16, len);
+        Util.arrayCopyNonAtomic(iv, (short)0, buf, (short)0, (short)16);
+        Util.arrayCopyNonAtomic(tempBuffer, (short)0, buf, (short)16, len);
         len += 16;
-        // replace with hmac
-        sha256.update(sharedSecret, (short)0, (short)32);
-        sha256.update(buf, (short)0, (short)len);
-        sha256.doFinal(sharedSecret, (short)0, (short)32, buf, len);
-        len += 32;
+        hmac_sha256.init(sharedSecret, (short)0, (short)32);
+        len += hmac_sha256.doFinal(buf, (short)0, len, buf, len);
         apdu.setOutgoingAndSend((short)0, len);
     }
     /**
@@ -207,11 +208,11 @@ public class MemoryCardApplet extends Applet{
         if(len != (byte)65){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
-        KeyAgreement ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
         ecdh.init((ECPrivateKey)uniqueKeyPair.getPrivate());
         ecdh.generateSecret(buf, ISO7816.OFFSET_CDATA, (short)65, sharedSecret, (short)0);
         ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
         // sending sha256 of the shared secret
+        sha256.reset();
         sha256.doFinal(sharedSecret, (short)0, (short)32, buf, (short)0);
         apdu.setOutgoingAndSend((short)0, (short)32);
     }
