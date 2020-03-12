@@ -61,7 +61,10 @@ public class MemoryCardApplet extends Applet{
 
     private SECP256k1 secp256k1;
     private RandomData rng;
-    private byte[] secret;
+    private MessageDigest sha256;
+
+    private KeyPair uniqueKeyPair;
+    // private byte[] secret;
     private byte[] sharedSecret;
 
     // Create an instance of the Applet subclass using its constructor, 
@@ -74,10 +77,11 @@ public class MemoryCardApplet extends Applet{
     public MemoryCardApplet(){
 
         secp256k1 = new SECP256k1();
+        sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
-        // generate random secret
-        secret = new byte[32];
-        rng.generateData(secret, (short)0, (short)32);
+        // generate random secret key for secure communication
+        uniqueKeyPair = secp256k1.newKeyPair();
+        uniqueKeyPair.genKeyPair();
         // fill with rng to make sure at first nobody can talk to the card
         sharedSecret = new byte[32];
         rng.generateData(sharedSecret, (short)0, (short)32);
@@ -122,6 +126,9 @@ public class MemoryCardApplet extends Applet{
         case INS_GET_RANDOM:
             SendRandom(apdu);
             break;
+        case INS_PERFORM_ECDH:
+            EstablishSharedSecret(apdu);
+            break;
         default:
             // If you don't know the INS, throw an exception.
             // ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -138,17 +145,37 @@ public class MemoryCardApplet extends Applet{
         apdu.sendBytesLong(secretData.get(), (short)0, secretData.length());
     }
     /**
-     * Sends data from the card in APDU responce
+     * Sends unique public key from the card in APDU responce
      * @param apdu the APDU buffer
      */
     protected void SendPubkey(APDU apdu){
         byte[] buf = apdu.getBuffer();
-        secp256k1.derivePublicKey(secret, (short)0, buf, (short)0);
-        apdu.setOutgoingAndSend((short) 0, (short)65);
+        ECPublicKey pub = (ECPublicKey)uniqueKeyPair.getPublic();
+        pub.getW(buf, (short)0);
+        apdu.setOutgoingAndSend((short)0, (short)65);
     }
+    /**
+     * Sends 32 random bytes in APDU responce
+     * @param apdu the APDU buffer
+     */
     protected void SendRandom(APDU apdu){
         byte[] buf = apdu.getBuffer();
         rng.generateData(buf, (short)0, (short)32);
         apdu.setOutgoingAndSend((short) 0, (short)32);
+    }
+    protected void EstablishSharedSecret(APDU apdu){
+        byte[] buf = apdu.getBuffer();
+        // cast signed byte to unsigned short
+        short len = buf[ISO7816.OFFSET_LC];
+        // check if data length is ok
+        if(len != (byte)65){
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        }
+        KeyAgreement ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
+        ecdh.init((ECPrivateKey)uniqueKeyPair.getPrivate());
+        ecdh.generateSecret(buf, ISO7816.OFFSET_CDATA, (short)65, sharedSecret, (short)0);
+        // sending sha256 of the shared secret
+        sha256.doFinal(sharedSecret, (short)0, (short)32, buf, (short)0);
+        apdu.setOutgoingAndSend((short)0, (short)32);
     }
 }

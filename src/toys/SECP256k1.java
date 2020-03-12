@@ -1,10 +1,6 @@
 package toys;
 
-import javacard.security.ECKey;
-import javacard.security.ECPrivateKey;
-import javacard.security.KeyAgreement;
-import javacard.security.KeyBuilder;
-
+import javacard.security.*;
 /**
  * Utility methods to work with the SECP256k1 curve. This class is not meant to be instantiated, but its init method
  * must be called during applet installation.
@@ -79,6 +75,15 @@ public class SECP256k1 {
     key.setK(SECP256K1_K);
   }
 
+  KeyPair newKeyPair() {
+    KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, SECP256K1_KEY_SIZE);
+
+    setCurveParameters((ECPrivateKey) kp.getPrivate());
+    setCurveParameters((ECPublicKey) kp.getPublic());
+
+    return kp;
+  }
+
   /**
    * Derives the public key from the given private key and outputs it in the pubOut buffer. This is done by multiplying
    * the private key by the G point of the curve.
@@ -123,4 +128,7 @@ public class SECP256k1 {
     ecPointMultiplier.init(privateKey);
     return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
   }
+  // short ecdh(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff){
+    
+  // }
 }
