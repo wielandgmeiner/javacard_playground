@@ -60,7 +60,7 @@ public class MemoryCardApplet extends Applet{
     protected OwnerPIN pin = null;
     protected DataEntry secretData = null;
 
-    private SECP256k1 secp256k1;
+    private Secp256k1 secp256k1;
     private RandomData rng;
     private MessageDigest sha256;
     private HMACDigest hmac_sha256;
@@ -84,7 +84,7 @@ public class MemoryCardApplet extends Applet{
     public MemoryCardApplet(){
 
         // crypto primitives
-        secp256k1 = new SECP256k1();
+        secp256k1 = new Secp256k1();
         sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         hmac_sha256 = new HMACDigest(sha256, HMACDigest.ALG_SHA_256_BLOCK_SIZE);
         ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
