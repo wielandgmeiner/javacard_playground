@@ -65,7 +65,6 @@ public class MemoryCardApplet extends Applet{
     private MessageDigest sha256;
     private HMACDigest hmac_sha256;
     private Cipher cipher;
-    private KeyAgreement ecdh;
 
     private KeyPair uniqueKeyPair;
     // private byte[] secret;
@@ -87,7 +86,6 @@ public class MemoryCardApplet extends Applet{
         secp256k1 = new Secp256k1();
         sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         hmac_sha256 = new HMACDigest(sha256, HMACDigest.ALG_SHA_256_BLOCK_SIZE);
-        ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
         cipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
@@ -208,8 +206,9 @@ public class MemoryCardApplet extends Applet{
         if(len != (byte)65){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
-        ecdh.init((ECPrivateKey)uniqueKeyPair.getPrivate());
-        ecdh.generateSecret(buf, ISO7816.OFFSET_CDATA, (short)65, sharedSecret, (short)0);
+        secp256k1.ecdh((ECPrivateKey)uniqueKeyPair.getPrivate(), 
+                        buf, ISO7816.OFFSET_CDATA, (short)65, 
+                        sharedSecret, (short)0);
         ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
         // sending sha256 of the shared secret
         sha256.reset();

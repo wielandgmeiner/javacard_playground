@@ -39,7 +39,7 @@ export JAVA_HOME="/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/
 
 - `gp.jar` - a working and easy to use tool for applets management, from https://github.com/martinpaljak/GlobalPlatformPro (LGPL3)
 - `ant-javacard.jar` - ant task to build javacard applet, from https://github.com/martinpaljak/ant-javacard (MIT)
-- `ext` folder - JavaCard SDK of different versions (Oracle-owns-you-and-your-grandma license)
+- `sdks` folder - JavaCard SDK of different versions (Oracle-owns-you-and-your-grandma license)
 
 Makes sense to make an alias for `gp.jar`:
 
@@ -71,7 +71,7 @@ gp -l
 
 Now you can communicate with the applet.
 
-Jupyter notebook with some examples - `comm.ipynb`.
+Jupyter notebook with some examples for applets are in [`jupyter/`](jupyter/) folder.
 
 # Useful links
 

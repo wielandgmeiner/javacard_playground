@@ -49,16 +49,15 @@ public class Secp256k1 {
   private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
 
 
-  private KeyAgreement ecPointMultiplier;
-  ECPrivateKey tmpECPrivateKey;
+  private KeyAgreement ecMult;
+  private KeyAgreement ecMultX;
 
   /**
    * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
    */
   Secp256k1() {
-    this.ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
-    this.tmpECPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256K1_KEY_SIZE, false);
-    setCommonCurveParameters(tmpECPrivateKey);
+    this.ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
+    this.ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
   }
 
   /**
@@ -85,34 +84,6 @@ public class Secp256k1 {
   }
 
   /**
-   * Derives the public key from the given private key and outputs it in the pubOut buffer. This is done by multiplying
-   * the private key by the G point of the curve.
-   *
-   * @param privateKey the private key
-   * @param pubOut the output buffer for the public key
-   * @param pubOff the offset in pubOut
-   * @return the length of the public key
-   */
-  short derivePublicKey(ECPrivateKey privateKey, byte[] pubOut, short pubOff) {
-    return multiplyPoint(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, pubOut, pubOff);
-  }
-
-
-  /**
-   * Derives the public key from the given private key and outputs it in the pubOut buffer. This is done by multiplying
-   * the private key by the G point of the curve.
-   *
-   * @param privateKey the private key
-   * @param pubOut the output buffer for the public key
-   * @param pubOff the offset in pubOut
-   * @return the length of the public key
-   */
-  short derivePublicKey(byte[] privateKey, short privOff, byte[] pubOut, short pubOff) {
-    tmpECPrivateKey.setS(privateKey, privOff, (short)(SECP256K1_KEY_SIZE/8));
-    return derivePublicKey(tmpECPrivateKey, pubOut, pubOff);
-  }
-
-  /**
    * Multiplies a scalar in the form of a private key by the given point. Internally uses a special version of EC-DH
    * supported since JavaCard 3.0.5 which outputs both X and Y in their uncompressed form.
    *
@@ -124,11 +95,24 @@ public class Secp256k1 {
    * @param outOff the offset in the output buffer
    * @return the length of the data written in the out buffer
    */
-  short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
-    ecPointMultiplier.init(privateKey);
-    return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
+  short pointMultiply(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
+    ecMult.init(privateKey);
+    return ecMult.generateSecret(point, pointOff, pointLen, out, outOff);
   }
-  // short ecdh(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff){
-    
-  // }
+  /**
+   * Preforms ECDH key agreement. 
+   * Writes x-coordinate of the point multiplication result to the output buffer.
+   *
+   * @param privateKey the scalar in a private key object
+   * @param point the point to multiply
+   * @param pointOff the offset of the point
+   * @param pointLen the length of the point
+   * @param out the output buffer
+   * @param outOff the offset in the output buffer
+   * @return the length of the data written in the out buffer
+   */
+  short ecdh(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff){
+    ecMultX.init(privateKey);
+    return ecMultX.generateSecret(point, pointOff, pointLen, out, outOff);
+  }
 }
