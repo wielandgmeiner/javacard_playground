@@ -71,10 +71,3 @@ class AppletBase:
 
     def request(self, APDU):
         return request(self.connection, APDU)
-
-    def get_data(self):
-        return self.request("B0A10000")
-
-    def put_data(self, d):
-        data = bytes([len(d)])+d.encode()
-        return self.request("B0A20000"+data.hex())
