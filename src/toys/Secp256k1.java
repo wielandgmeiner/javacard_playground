@@ -49,15 +49,15 @@ public class Secp256k1 {
   private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
 
 
-  private KeyAgreement ecMult;
-  private KeyAgreement ecMultX;
+  static private KeyAgreement ecMult;
+  static private KeyAgreement ecMultX;
 
   /**
    * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
    */
-  Secp256k1() {
-    this.ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
-    this.ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
+  static void init() {
+    ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
+    ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
   }
 
   /**
@@ -65,7 +65,7 @@ public class Secp256k1 {
    *
    * @param key the key where the curve parameters must be set
    */
-  void setCommonCurveParameters(ECKey key) {
+  static void setCommonCurveParameters(ECKey key) {
     key.setA(SECP256K1_A, (short) 0x00, (short) SECP256K1_A.length);
     key.setB(SECP256K1_B, (short) 0x00, (short) SECP256K1_B.length);
     key.setFieldFP(SECP256K1_FP, (short) 0x00, (short) SECP256K1_FP.length);
@@ -74,7 +74,7 @@ public class Secp256k1 {
     key.setK(SECP256K1_K);
   }
 
-  KeyPair newKeyPair() {
+  static KeyPair newKeyPair() {
     KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, SECP256K1_KEY_SIZE);
 
     setCommonCurveParameters((ECPrivateKey) kp.getPrivate());
@@ -95,7 +95,7 @@ public class Secp256k1 {
    * @param outOff the offset in the output buffer
    * @return the length of the data written in the out buffer
    */
-  short pointMultiply(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
+  static short pointMultiply(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
     ecMult.init(privateKey);
     return ecMult.generateSecret(point, pointOff, pointLen, out, outOff);
   }
@@ -111,7 +111,7 @@ public class Secp256k1 {
    * @param outOff the offset in the output buffer
    * @return the length of the data written in the out buffer
    */
-  short ecdh(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff){
+  static short ecdh(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff){
     ecMultX.init(privateKey);
     return ecMultX.generateSecret(point, pointOff, pointLen, out, outOff);
   }
