@@ -21,10 +21,14 @@ public class SecureChannel{
     static private ECPrivateKey sessionPrivateKey;
     static private boolean sessionIsTransient = false;
 
-    static private byte[] sharedSecret;
-    static private Key sharedKey;
-    static private byte[] iv;
-    static private byte[] tempBuffer;
+    static private byte sharedSecret[];
+    static final private byte CARD_PREFIX[] = { (byte)'c', (byte)'a', (byte)'r', (byte)'d' };
+    static final private byte HOST_PREFIX[] = { (byte)'h', (byte)'o', (byte)'s', (byte)'t' };
+    static final private short PREFIX_LEN = (short)4;
+    static private AESKey cardKey;
+    static private AESKey hostKey;
+    static private byte iv[];
+    static private byte tempBuffer[];
 
     static public void init(){
         // generate random secret key for secure communication
@@ -58,8 +62,8 @@ public class SecureChannel{
         // temporary buffer for stuff
         tempBuffer = JCSystem.makeTransientByteArray((short)255, JCSystem.CLEAR_ON_DESELECT);
 
-        sharedKey = KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
-        ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
+        cardKey = (AESKey)KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
+        hostKey = (AESKey)KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     }
     static public ECPublicKey getStaticPubkey(){
         return (ECPublicKey)staticKeyPair.getPublic();
@@ -88,7 +92,15 @@ public class SecureChannel{
                             buf, offset, (short)65, 
                             sharedSecret, (short)0);
         }
-        ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
+        Crypto.sha256.reset();
+        Crypto.sha256.update(CARD_PREFIX, (short)0, PREFIX_LEN);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, tempBuffer, (short)0);
+        cardKey.setKey(tempBuffer, (short)0);
+
+        Crypto.sha256.reset();
+        Crypto.sha256.update(HOST_PREFIX, (short)0, PREFIX_LEN);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, tempBuffer, (short)0);
+        hostKey.setKey(tempBuffer, (short)0);
     }
     static public short serializeSessionPubkey(byte[] buf, short offset){
         // pubkey is just ECDH of private key with G
@@ -98,7 +110,8 @@ public class SecureChannel{
         return (short)65;
     }
     static public short authenticateData(byte[] data, short dataOffset, short dataLen, byte[] out, short outOffset){
-        Crypto.hmac_sha256.init(sharedSecret, (short)0, (short)32);
+        cardKey.getKey(tempBuffer, (short)0);
+        Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
         return Crypto.hmac_sha256.doFinal(data, dataOffset, dataLen, out, outOffset);
     }
     static public short signData(byte[] data, short dataOffset, short dataLen, byte[] out, short outOffset){
@@ -107,15 +120,18 @@ public class SecureChannel{
         return Secp256k1.sign((ECPrivateKey)staticKeyPair.getPrivate(), tempBuffer, (short)0, out, outOffset);
     }
     static public short getSharedHash(byte[] buf, short offset){
-        // sending sha256 of the shared secret
+        // sending sha256 of the hostKey + cardKey
         Crypto.sha256.reset();
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, buf, offset);
+        hostKey.getKey(tempBuffer, (short)0);
+        Crypto.sha256.update(tempBuffer, (short)0, (short)32);
+        cardKey.getKey(tempBuffer, (short)0);
+        Crypto.sha256.doFinal(tempBuffer, (short)0, (short)32, buf, offset);
         return (short)32;
     }
     static public short encrypt(byte[] data, short offset, short dataLen, byte[] cyphertext, short ctOffset){
         // TODO: check length
         Crypto.random.generateData(iv, (short)0, (short)16);
-        Crypto.cipher.init(sharedKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
+        Crypto.cipher.init(cardKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
         short len = Crypto.cipher.doFinal(data, offset, dataLen, tempBuffer, (short)0);
         Util.arrayCopyNonAtomic(iv, (short)0, cyphertext, ctOffset, (short)16);
         Util.arrayCopyNonAtomic(tempBuffer, (short)0, cyphertext, (short)(ctOffset+16), len);
