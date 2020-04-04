@@ -17,7 +17,10 @@ public class SecureChannel{
     // that the card is the same.
     // Arbitrary data can be signed with .sign() method
     // to verify that the card actually has private key
-    static public KeyPair uniqueKeyPair;
+    static private KeyPair staticKeyPair;
+    static private ECPrivateKey sessionPrivateKey;
+    static private boolean sessionIsTransient = false;
+
     static private byte[] sharedSecret;
     static private Key sharedKey;
     static private byte[] iv;
@@ -25,8 +28,27 @@ public class SecureChannel{
 
     static public void init(){
         // generate random secret key for secure communication
-        uniqueKeyPair = Secp256k1.newKeyPair();
-        uniqueKeyPair.genKeyPair();
+        staticKeyPair = Secp256k1.newKeyPair();
+        staticKeyPair.genKeyPair();
+        // generate random session key pair 
+        // - will be cleared every time on reset / deselect
+        try {
+            // ok, let's save RAM
+            sessionPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE_TRANSIENT_DESELECT, KeyBuilder.LENGTH_EC_FP_256, false);
+            sessionIsTransient = true;
+        }
+        catch(CryptoException e) {
+            try {
+                // ok, let's save a bit less RAM
+                sessionPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE_TRANSIENT_RESET, KeyBuilder.LENGTH_EC_FP_256, false);
+                sessionIsTransient = true;
+            }
+            catch(CryptoException e1) {
+                // ok, let's test the flash wear leveling \o/
+                sessionPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
+                Secp256k1.setCommonCurveParameters(sessionPrivateKey);
+            }
+        }
         // fill with random data to make sure that
         // at first nobody can talk to the card
         sharedSecret = JCSystem.makeTransientByteArray((short)32, JCSystem.CLEAR_ON_DESELECT);
@@ -39,14 +61,50 @@ public class SecureChannel{
         sharedKey = KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
         ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
     }
-    static public ECPublicKey getPubkey(){
-        return (ECPublicKey)uniqueKeyPair.getPublic();
+    static public ECPublicKey getStaticPubkey(){
+        return (ECPublicKey)staticKeyPair.getPublic();
     }
-    static public void establishSharedSecret(byte[] buf, short offset){
-        Secp256k1.ecdh((ECPrivateKey)uniqueKeyPair.getPrivate(), 
-                        buf, offset, (short)65, 
-                        sharedSecret, (short)0);
+    static public short serializeStaticPubkey(byte[] buf, short offset){
+        ECPublicKey pub = getStaticPubkey();
+        pub.getW(buf, offset);
+        return (short)65;
+    }
+    static public void establishSharedSecret(byte[] buf, short offset, boolean useEphimerial){
+        if(useEphimerial){
+            // generate random key pair
+            // as session key pair is transient 
+            // we need to set curve every time?
+            // TODO: check
+            if(sessionIsTransient){
+                Secp256k1.setCommonCurveParameters(sessionPrivateKey);
+            }
+            Crypto.random.generateData(tempBuffer, (short)0, (short)32);
+            sessionPrivateKey.setS(tempBuffer, (short)0, (short)32);
+            Secp256k1.ecdh( sessionPrivateKey, 
+                            buf, offset, (short)65, 
+                            sharedSecret, (short)0);
+        }else{
+            Secp256k1.ecdh( (ECPrivateKey)staticKeyPair.getPrivate(), 
+                            buf, offset, (short)65, 
+                            sharedSecret, (short)0);
+        }
         ((AESKey)sharedKey).setKey(sharedSecret, (short)0);
+    }
+    static public short serializeSessionPubkey(byte[] buf, short offset){
+        // pubkey is just ECDH of private key with G
+        Secp256k1.pointMultiply( sessionPrivateKey, 
+                        Secp256k1.SECP256K1_G, (short)0, (short)65, 
+                        buf, offset);
+        return (short)65;
+    }
+    static public short authenticateData(byte[] data, short dataOffset, short dataLen, byte[] out, short outOffset){
+        Crypto.hmac_sha256.init(sharedSecret, (short)0, (short)32);
+        return Crypto.hmac_sha256.doFinal(data, dataOffset, dataLen, out, outOffset);
+    }
+    static public short signData(byte[] data, short dataOffset, short dataLen, byte[] out, short outOffset){
+        Crypto.sha256.reset();
+        Crypto.sha256.doFinal(data, dataOffset, dataLen, tempBuffer, (short)0);
+        return Secp256k1.sign((ECPrivateKey)staticKeyPair.getPrivate(), tempBuffer, (short)0, out, outOffset);
     }
     static public short getSharedHash(byte[] buf, short offset){
         // sending sha256 of the shared secret

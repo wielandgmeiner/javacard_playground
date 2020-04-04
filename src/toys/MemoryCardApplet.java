@@ -22,13 +22,13 @@ public class MemoryCardApplet extends TeapotApplet{
     /* Secure channel stuff */
     // Get EC public key for ECDH key agreement
     // Static. Host should compare with a known one
-    private static final byte INS_GET_PUBKEY            = (byte)0xB2;
-    private static final byte INS_SET_REMOTE_PUBKEY     = (byte)0xB3;
-    private static final byte INS_SECURE_MESSAGE        = (byte)0xB4;
-    private static final byte INS_CLOSE_CHANNEL         = (byte)0xB5;
-
-    // Do ECDH
-    private static final byte INS_PERFORM_ECDH          = (byte)0xB3;
+    private static final byte INS_GET_CARD_PUBKEY       = (byte)0xB2;
+    // secret will be ECDH(Card Static, Host Ephimerial)  
+    private static final byte INS_SET_HOST_PUBKEY       = (byte)0xB3;
+    // secret will be ECDH(Card Ephimerial, Host Ephimerial)
+    private static final byte INS_SET_HOST_GET_EPH      = (byte)0xB4;
+    private static final byte INS_SECURE_MESSAGE        = (byte)0xB5;
+    private static final byte INS_CLOSE_CHANNEL         = (byte)0xB6;
 
     // Challenge management - to detect swapping of the card
     // We limit number of challenges to avoid sweep
@@ -111,19 +111,26 @@ public class MemoryCardApplet extends TeapotApplet{
         }
         // Dispatch INS in APDU.
         switch (buf[ISO7816.OFFSET_INS]){
-        case INS_GET_PUBKEY:
+        case INS_GET_CARD_PUBKEY:
             // The APDU format can be "B0 A1 P1 P2 Lc Data Le", 
             // such as "B0A10000" or "B0A101020311223300".
-            SendPubkey(apdu);
+            sendCardPubkey(apdu);
+            break;
+        case INS_SET_HOST_PUBKEY:
+            // this one uses random key from host and
+            // static key from card - simple key agreement
+            setHostPubkey(apdu);
+            break;
+        case INS_SET_HOST_GET_EPH:
+            // this one uses random keys from both parties
+            // more secure, but probably uses EEPROM :(
+            setHostGetEphimerial(apdu);
+            break;
+        case INS_SECURE_MESSAGE:
+            handleSecureMessage(apdu);
             break;
         case INS_GET_RANDOM:
-            SendRandom(apdu);
-            break;
-        case INS_PERFORM_ECDH:
-            EstablishSharedSecret(apdu);
-            break;
-        case (byte)0xA4:
-            Encrypt(apdu);
+            sendRandom(apdu);
             break;
         default:
             // If we don't know the INS, 
@@ -131,38 +138,26 @@ public class MemoryCardApplet extends TeapotApplet{
             super.process(apdu);
         }
     }
-    private void Encrypt(APDU apdu){
-        byte[] buf = apdu.getBuffer();
-        apdu.setIncomingAndReceive();
+    // private void Encrypt(APDU apdu){
+    //     byte[] buf = apdu.getBuffer();
+    //     apdu.setIncomingAndReceive();
 
-        short len = buf[ISO7816.OFFSET_LC];
-        len = SecureChannel.encrypt(buf, ISO7816.OFFSET_CDATA, len, buf, (short)0);
-        apdu.setOutgoingAndSend((short)0, len);
-    }
+    //     short len = buf[ISO7816.OFFSET_LC];
+    //     len = SecureChannel.encrypt(buf, ISO7816.OFFSET_CDATA, len, buf, (short)0);
+    //     apdu.setOutgoingAndSend((short)0, len);
+    // }
     /**
      * Sends unique public key from the card in APDU responce
      * @param apdu the APDU buffer
      */
-    private void SendPubkey(APDU apdu){
+    private void sendCardPubkey(APDU apdu){
         byte[] buf = apdu.getBuffer();
         apdu.setIncomingAndReceive();
-
-        ECPublicKey pub = SecureChannel.getPubkey();
-        pub.getW(buf, (short)0);
-        apdu.setOutgoingAndSend((short)0, (short)65);
+        // put static public key of the card to the buffer
+        short len = SecureChannel.serializeStaticPubkey(buf, (short)0);
+        apdu.setOutgoingAndSend((short)0, len);
     }
-    /**
-     * Sends 32 random bytes in APDU responce
-     * @param apdu the APDU buffer
-     */
-    private void SendRandom(APDU apdu){
-        byte[] buf = apdu.getBuffer();
-        apdu.setIncomingAndReceive();
-
-        Crypto.random.generateData(buf, (short)0, (short)32);
-        apdu.setOutgoingAndSend((short) 0, (short)32);
-    }
-    private void EstablishSharedSecret(APDU apdu){
+    private void setHostPubkey(APDU apdu){
         byte[] buf = apdu.getBuffer();
         apdu.setIncomingAndReceive();
 
@@ -172,9 +167,49 @@ public class MemoryCardApplet extends TeapotApplet{
         if(len != (byte)65){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
-        SecureChannel.establishSharedSecret(buf, ISO7816.OFFSET_CDATA);
-        // len will be 32
+        SecureChannel.establishSharedSecret(buf, ISO7816.OFFSET_CDATA, false);
+        // get hash of the shared secret and put it to the buffer
         len = SecureChannel.getSharedHash(buf, (short)0);
+        // add hmac using shared secret
+        len += SecureChannel.authenticateData(buf, (short)0, len, buf, len);
+        // add signature with static pubkey
+        len += SecureChannel.signData(buf, (short)0, len, buf, len);
+        // send hash of the shared secret, hmac and signature back to the host
         apdu.setOutgoingAndSend((short)0, len);
+    }
+    private void setHostGetEphimerial(APDU apdu){
+        byte[] buf = apdu.getBuffer();
+        apdu.setIncomingAndReceive();
+
+        // cast signed byte to unsigned short
+        short len = buf[ISO7816.OFFSET_LC];
+        // check if data length is ok
+        if(len != (byte)65){
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        }
+        SecureChannel.establishSharedSecret(buf, ISO7816.OFFSET_CDATA, true);
+        // get session pubkey and put it to the buffer
+        len = SecureChannel.serializeSessionPubkey(buf, (short)0);
+        // add hmac using shared secret
+        len += SecureChannel.authenticateData(buf, (short)0, len, buf, len);
+        // add signature with static pubkey
+        len += SecureChannel.signData(buf, (short)0, len, buf, len);
+        // send pubkey, hmac and signature back to the host
+        apdu.setOutgoingAndSend((short)0, len);
+    }
+    private void handleSecureMessage(APDU apdu){
+        sendRandom(apdu);
+    }
+    /**
+     * Sends 32 random bytes in APDU responce
+     * @param apdu the APDU buffer
+     */
+    private void sendRandom(APDU apdu){
+        byte[] buf = apdu.getBuffer();
+        apdu.setIncomingAndReceive();
+        // fill buffer with 32 bytes of random data
+        Crypto.random.generateData(buf, (short)0, (short)32);
+        // send it to the host
+        apdu.setOutgoingAndSend((short) 0, (short)32);
     }
 }
