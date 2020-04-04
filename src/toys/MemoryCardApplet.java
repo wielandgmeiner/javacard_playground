@@ -138,14 +138,6 @@ public class MemoryCardApplet extends TeapotApplet{
             super.process(apdu);
         }
     }
-    // private void Encrypt(APDU apdu){
-    //     byte[] buf = apdu.getBuffer();
-    //     apdu.setIncomingAndReceive();
-
-    //     short len = buf[ISO7816.OFFSET_LC];
-    //     len = SecureChannel.encrypt(buf, ISO7816.OFFSET_CDATA, len, buf, (short)0);
-    //     apdu.setOutgoingAndSend((short)0, len);
-    // }
     /**
      * Sends unique public key from the card in APDU responce
      * @param apdu the APDU buffer
@@ -198,7 +190,19 @@ public class MemoryCardApplet extends TeapotApplet{
         apdu.setOutgoingAndSend((short)0, len);
     }
     private void handleSecureMessage(APDU apdu){
-        sendRandom(apdu);
+        byte[] buf = apdu.getBuffer();
+        apdu.setIncomingAndReceive();
+        short len = buf[ISO7816.OFFSET_LC];
+        if(len < (short)0){
+            len = (short)(len + (short)256);
+        }
+        len = SecureChannel.decryptMessage(buf, ISO7816.OFFSET_CDATA, len, buf, (short)0);
+        // add 1 to every byte
+        for(short i=0; i<len; i++){
+            buf[i]+=1;
+        }
+        len = SecureChannel.encryptMessage(buf, (short)0, len, buf, (short)0);
+        apdu.setOutgoingAndSend((short)0, len);
     }
     /**
      * Sends 32 random bytes in APDU responce

@@ -37,18 +37,15 @@ public class SecureChannel{
         // generate random session key pair 
         // - will be cleared every time on reset / deselect
         try {
-            // ok, let's save RAM
             sessionPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE_TRANSIENT_DESELECT, KeyBuilder.LENGTH_EC_FP_256, false);
             sessionIsTransient = true;
         }
         catch(CryptoException e) {
             try {
-                // ok, let's save a bit less RAM
                 sessionPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE_TRANSIENT_RESET, KeyBuilder.LENGTH_EC_FP_256, false);
                 sessionIsTransient = true;
             }
             catch(CryptoException e1) {
-                // ok, let's test the flash wear leveling \o/
                 sessionPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
                 Secp256k1.setCommonCurveParameters(sessionPrivateKey);
             }
@@ -74,6 +71,9 @@ public class SecureChannel{
         return (short)65;
     }
     static public void establishSharedSecret(byte[] buf, short offset, boolean useEphimerial){
+        // first we wipe what we already have
+        closeChannel();
+        // now we establish new shared secret
         if(useEphimerial){
             // generate random key pair
             // as session key pair is transient 
@@ -101,6 +101,8 @@ public class SecureChannel{
         Crypto.sha256.update(HOST_PREFIX, (short)0, PREFIX_LEN);
         Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, tempBuffer, (short)0);
         hostKey.setKey(tempBuffer, (short)0);
+        // now we can set iv counter to zero
+        Util.arrayFillNonAtomic(iv, (short)0, (short)16, (byte)0);
     }
     static public short serializeSessionPubkey(byte[] buf, short offset){
         // pubkey is just ECDH of private key with G
@@ -114,6 +116,13 @@ public class SecureChannel{
         Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
         return Crypto.hmac_sha256.doFinal(data, dataOffset, dataLen, out, outOffset);
     }
+    // Signs arbitrary data with unique keypair
+    // AFAIK signing process is deterministic so this method
+    // can be used for anti-phishing words generation
+    // like ColdCard's double-PIN technique
+    // Recommended to hash incoming data with a prefix,
+    // for example "KeyCheck" to narrow down signing
+    // to a particular action
     static public short signData(byte[] data, short dataOffset, short dataLen, byte[] out, short outOffset){
         Crypto.sha256.reset();
         Crypto.sha256.doFinal(data, dataOffset, dataLen, tempBuffer, (short)0);
@@ -128,26 +137,72 @@ public class SecureChannel{
         Crypto.sha256.doFinal(tempBuffer, (short)0, (short)32, buf, offset);
         return (short)32;
     }
-    static public short encrypt(byte[] data, short offset, short dataLen, byte[] cyphertext, short ctOffset){
-        // TODO: check length
-        Crypto.random.generateData(iv, (short)0, (short)16);
-        Crypto.cipher.init(cardKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
-        short len = Crypto.cipher.doFinal(data, offset, dataLen, tempBuffer, (short)0);
-        Util.arrayCopyNonAtomic(iv, (short)0, cyphertext, ctOffset, (short)16);
-        Util.arrayCopyNonAtomic(tempBuffer, (short)0, cyphertext, (short)(ctOffset+16), len);
-        len += 16;
-        Crypto.hmac_sha256.init(sharedSecret, (short)0, (short)32);
-        len += Crypto.hmac_sha256.doFinal(cyphertext, ctOffset, len, cyphertext, (short)(ctOffset+len));
+    static public short decryptMessage(byte[] ct, short ctOffset, short ctLen, byte[] out, short outOffset){
+        // first we check that hmac is correct
+        if(ctLen < 32){
+            closeChannel();
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        short dataLen = (short)(ctLen-32);
+        // calculate expected hmac
+        hostKey.getKey(tempBuffer, (short)0);
+        Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
+        Crypto.hmac_sha256.update(iv, (short)0, (short)16);
+        Crypto.hmac_sha256.doFinal(ct, ctOffset, dataLen, tempBuffer, (short)0);
+        // check hmac is correct
+        if(Util.arrayCompare(tempBuffer, (short)0, ct, (short)(ctOffset+dataLen),(short)32)!=(byte)0){
+            closeChannel();
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        // decrypt using current iv value
+        Crypto.cipher.init(hostKey, Cipher.MODE_DECRYPT, iv, (short)0, (short)16);
+        short len = Crypto.cipher.doFinal(ct, ctOffset, dataLen, tempBuffer, (short)0);
+        Util.arrayCopyNonAtomic(tempBuffer, (short)0, out, outOffset, len);
         return len;
     }
-    // TODO: .sign() - signs arbitrary data with unique keypair
-    // AFAIK signing process is deterministic so this method
-    // can be used for anti-phishing words generation
-    // like ColdCard's double-PIN technique
-    // Recommended to hash incoming data with a prefix,
-    // for example "KeyCheck" to narrow down signing
-    // to a particular action
-    static public short sign(){
-        return 0;
+    static public short encryptMessage(byte[] data, short offset, short dataLen, byte[] cyphertext, short ctOffset){
+        // TODO: check length
+        Crypto.cipher.init(cardKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
+        short len = Crypto.cipher.doFinal(data, offset, dataLen, tempBuffer, (short)0);
+        Util.arrayCopyNonAtomic(tempBuffer, (short)0, cyphertext, ctOffset, len);
+        cardKey.getKey(tempBuffer, (short)0);
+        Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
+        Crypto.hmac_sha256.update(iv, (short)0, (short)16);
+        len += Crypto.hmac_sha256.doFinal(cyphertext, ctOffset, len, cyphertext, (short)(ctOffset+len));
+        increaseIV();
+        return len;
+    }
+    // TODO: refactor, ugly
+    static private void increaseIV(){
+        short val = (short)0;
+        byte carry = (byte)1;
+        for(short i=(short)15; i>=(short)0; i--){
+            val = iv[i];
+            if(val < (short)0){
+                val = (short)(val + (short)256);
+            }
+            if(val == (short)255){
+                val = (short)0;
+                iv[i] = (byte)0;
+            }else{
+                carry = (byte)0;
+                val = (short)(val+1);
+                iv[i] = (byte)val;
+                break;
+            }
+        }
+        if(carry==(byte)1){
+            closeChannel();
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+    }
+    static public void closeChannel(){
+        // overwrite all secrets with random junk
+        Crypto.random.generateData(sharedSecret, (short)0, (short)32);
+        Crypto.random.generateData(tempBuffer, (short)0, (short)255);
+        cardKey.setKey(tempBuffer, (short)0);
+        hostKey.setKey(tempBuffer, (short)32);
+        Util.arrayCopyNonAtomic(tempBuffer, (short)64, iv, (short)0, (short)16);
+        Crypto.random.generateData(tempBuffer, (short)0, (short)255);
     }
 }

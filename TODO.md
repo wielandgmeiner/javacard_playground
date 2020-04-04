@@ -5,7 +5,10 @@
 *Note* We should also implement our own secure communication protocol, same reasons.
 
 - secure communication protocol (auth-enc), probably using DH
-- store 32-byte secret(s)
+  - padding
+  - status byte
+  - command bytes & responce bytes
+- store secret data
 - set 32-byte "pin code" (tagged_hash("CardUnlock", device_secret || pin_code))
 - get 32-byte secret(s)
 - get status - uninitialized, unlocked, locked, permanently locked
