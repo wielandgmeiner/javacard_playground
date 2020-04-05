@@ -143,14 +143,19 @@ public class SecureChannel{
             closeChannel();
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
-        short dataLen = (short)(ctLen-32);
+        short hmacLen = (short)32;
+        // max size => drop last byte
+        if(ctLen == (short)255){
+            hmacLen = (short)31;
+        }
+        short dataLen = (short)(ctLen-hmacLen);
         // calculate expected hmac
         hostKey.getKey(tempBuffer, (short)0);
         Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
         Crypto.hmac_sha256.update(iv, (short)0, (short)16);
         Crypto.hmac_sha256.doFinal(ct, ctOffset, dataLen, tempBuffer, (short)0);
         // check hmac is correct
-        if(Util.arrayCompare(tempBuffer, (short)0, ct, (short)(ctOffset+dataLen),(short)32)!=(byte)0){
+        if(Util.arrayCompare(tempBuffer, (short)0, ct, (short)(ctOffset+dataLen),hmacLen)!=(byte)0){
             closeChannel();
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
@@ -161,16 +166,25 @@ public class SecureChannel{
         return len;
     }
     static public short encryptMessage(byte[] data, short offset, short dataLen, byte[] cyphertext, short ctOffset){
-        // TODO: check length
+        if(dataLen >= (short)224){
+            // ciphertext + hmac wont fit in 256 bytes...
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
         Crypto.cipher.init(cardKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
         short len = Crypto.cipher.doFinal(data, offset, dataLen, tempBuffer, (short)0);
         Util.arrayCopyNonAtomic(tempBuffer, (short)0, cyphertext, ctOffset, len);
         cardKey.getKey(tempBuffer, (short)0);
         Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
         Crypto.hmac_sha256.update(iv, (short)0, (short)16);
-        len += Crypto.hmac_sha256.doFinal(cyphertext, ctOffset, len, cyphertext, (short)(ctOffset+len));
+        Crypto.hmac_sha256.doFinal(cyphertext, ctOffset, len, tempBuffer, (short)0);
+        short hmacLen = (short)32;
+        // if we are hitting the limit
+        if((short)(len+hmacLen) == (short)256){
+            hmacLen = (short)31;
+        }
+        Util.arrayCopyNonAtomic(tempBuffer, (short)0, cyphertext, (short)(ctOffset+len), hmacLen);
         increaseIV();
-        return len;
+        return (short)(len+hmacLen);
     }
     // TODO: refactor, ugly
     static private void increaseIV(){
