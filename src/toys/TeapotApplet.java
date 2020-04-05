@@ -88,11 +88,7 @@ public class TeapotApplet extends Applet{
      */
     private void StoreData(APDU apdu){
         byte[] buf = apdu.getBuffer();
-        // cast signed byte to unsigned short
-        short len = buf[ISO7816.OFFSET_LC];
-        if(len < (short)0){
-            len = (short)(len + (short)256);
-        }
+        short len = Util.makeShort((byte)0, buf[ISO7816.OFFSET_LC]);
         // check if data length is ok
         if(len > MAX_DATA_LENGTH){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);

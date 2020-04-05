@@ -151,25 +151,25 @@ Commands marked with `PIN protected` can be used only if the card is unlocked.
 
 TODO Commands:
 
-- echo - good for testing. Returns the same data back.
-- get random number - returns 32 random bytes
-- anti-phishing - counter increased with every request, but only if card is locked. Can be used for card authentication by the user (double PIN approach of ColdCard or anti-phishing words in Specter)
-  - mode signature - returns ECDSA signature of `"auth"|data`
-  - mode hmac - returns HMAC-SHA256 with `"auth"|data`
-  - get counter `<signatures_left><signatures_max=100>`
-- pin
-  - status -> locked, unlocked, permanently locked
-  - unlock `<pin>` -> ok (`0x9000`), wrong pin, permanently locked
-  - lock
-  - change `<old_pin><new_pin>` - PIN protected
-  - get counter -> `<attempts_left><attempts_max=10>`
-- wipe
-- data storage - PIN protected
-  - get
-  - put - max `221` bytes
+- Echo: `0x0000<data>` - good for testing. Returns the same data back.
+- Get random number: `0x0100` - returns 32 random bytes
+- Anti-phishing commands: `0x02<code>` - counter increased with every request, but only if card is locked. Can be used for card authentication by the user (double PIN approach of ColdCard or anti-phishing words in Specter)
+  - Get counter: `0x0200` - returns `<signatures_left><signatures_max=100>`
+  - Signature mode: `0x0201<msg:32>` - returns ECDSA signature of `"auth"|data`
+  - HMAC mode: `0x0202<msg:32>` - returns HMAC-SHA256 with `"auth"|data`
+- PIN commands: `0x03<code>`
+  - Get status: `0x0300` -> `<attempts_left><attempts_max=10><status>`
+  - Unlock: `0x0301<pin:max32>` `<pin>` -> ok (`0x9000`), wrong pin, permanently locked. If PIN is not initialized and you try to unlock it - pin will set to provided value.
+  - Lock: `0x0302`
+  - Change PIN: `0x0303<len_old><old_pin><len_new><new_pin>` - PIN protected
+- Wipe: `0x0400`
+- Data storage: `0x05<code>` - PIN protected
+  - Get data: `0x0500`
+  - Put data: `0x0501<data>` - max `221` bytes
 
 TODO Status codes:
 - pin
+  - pin not set
   - wrong pin
   - permanently locked
 - invalid data ???

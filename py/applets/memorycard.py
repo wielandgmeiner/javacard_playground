@@ -24,10 +24,7 @@ class MemoryCard(Teapot):
             return self.get_random_sc()
         else:
             return self.request("B0B10000")
-    
-    def get_random_sc(self):
-        return self.request("B0B10000")
-    
+        
     def get_card_pubkey(self):
         sec = self.request("B0B2000000")
         self.card_pubkey = PublicKey.parse(sec)
@@ -93,7 +90,7 @@ class MemoryCard(Teapot):
                 raise RuntimeError("Meh... Something didn't work? Card returned %s, we have %s" % (res[:32].hex(), shared_hash.hex()))
         # reset iv
         self.iv = 0
-        is_secure_channel_open = True
+        self.is_secure_channel_open = True
     
     def encrypt(self, data):
         # add padding
@@ -141,7 +138,22 @@ class MemoryCard(Teapot):
         res = self.request("B0B50000"+(bytes([len(ct)])+ct).hex())
         plaintext = self.decrypt(res)
         self.iv += 1
-        return plaintext
+        if plaintext[:2] == b'\x90\x00':
+            return plaintext[2:]
+        else:
+            raise RuntimeError("Card returned secure error with code %r and data %r" % (plaintext[:2].hex(), plaintext[2:]))
 
     def close_secure_channel(self):
         self.request("B0B6000000")
+
+    def echo(self, data):
+        return self.secure_request(b'\x00\x00'+data)
+
+    def get_random_sc(self):
+        return self.secure_request(b'\x01\x00')
+
+    def get_secret_data(self):
+        return self.secure_request(b'\x05\x00')
+
+    def put_secret_data(self, d):
+        return self.secure_request(b'\x05\x01'+d)
