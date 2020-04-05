@@ -142,3 +142,6 @@ class MemoryCard(Teapot):
         plaintext = self.decrypt(res)
         self.iv += 1
         return plaintext
+
+    def close_secure_channel(self):
+        self.request("B0B6000000")

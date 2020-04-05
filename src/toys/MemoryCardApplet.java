@@ -132,6 +132,9 @@ public class MemoryCardApplet extends TeapotApplet{
         case INS_GET_RANDOM:
             sendRandom(apdu);
             break;
+        case INS_CLOSE_CHANNEL:
+            SecureChannel.closeChannel();
+            break;
         default:
             // If we don't know the INS, 
             // pass it to the parent

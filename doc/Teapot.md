@@ -22,7 +22,7 @@ To select applet use `SELECT` APDU: `00A4040006B00B5111CA0100`
 | DATA   | ignored                                  |
 | RETURN | `SW`: `0x9000`, `DATA`: data stored in the card |
 
-Example: `B0A100000000` -> returns stored data
+Example: `B0A1000000` -> returns stored data
 
 ### Store data
 
@@ -35,9 +35,9 @@ Example: `B0A100000000` -> returns stored data
 | RETURN | `SW`: `0x9000`, `DATA`: updated data stored on the card |
 | ERRORS | `SW`: `0x6700` (`ISO7816.SW_WRONG_LENGTH`) if data is more than `255` bytes |
 
-Example: `B0A20000<len><data>00`
+Example: `B0A20000<len><data>`
 
 - Data: `shiny teapot taking care of your secrets`
 - Data in hex: `7368696e7920746561706f742074616b696e672063617265206f6620796f75722073656372657473`
 - Data length: 40 (`0x28`)
-- APDU: `B0A20000287368696e7920746561706f742074616b696e672063617265206f6620796f7572207365637265747300`
+- APDU: `B0A20000287368696e7920746561706f742074616b696e672063617265206f6620796f75722073656372657473`
