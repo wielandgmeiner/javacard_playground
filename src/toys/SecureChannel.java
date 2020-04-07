@@ -113,8 +113,8 @@ public class SecureChannel{
     }
     static public short authenticateData(byte[] data, short dataOffset, short dataLen, byte[] out, short outOffset){
         cardKey.getKey(tempBuffer, (short)0);
-        Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
-        return Crypto.hmac_sha256.doFinal(data, dataOffset, dataLen, out, outOffset);
+        Crypto.hmacSha256.init(tempBuffer, (short)0, (short)32);
+        return Crypto.hmacSha256.doFinal(data, dataOffset, dataLen, out, outOffset);
     }
     // Signs arbitrary data with unique keypair
     // AFAIK signing process is deterministic so this method
@@ -151,9 +151,9 @@ public class SecureChannel{
         short dataLen = (short)(ctLen-hmacLen);
         // calculate expected hmac
         hostKey.getKey(tempBuffer, (short)0);
-        Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
-        Crypto.hmac_sha256.update(iv, (short)0, (short)16);
-        Crypto.hmac_sha256.doFinal(ct, ctOffset, dataLen, tempBuffer, (short)0);
+        Crypto.hmacSha256.init(tempBuffer, (short)0, (short)32);
+        Crypto.hmacSha256.update(iv, (short)0, (short)16);
+        Crypto.hmacSha256.doFinal(ct, ctOffset, dataLen, tempBuffer, (short)0);
         // check hmac is correct
         if(Util.arrayCompare(tempBuffer, (short)0, ct, (short)(ctOffset+dataLen),hmacLen)!=(byte)0){
             closeChannel();
@@ -174,9 +174,9 @@ public class SecureChannel{
         short len = Crypto.cipher.doFinal(data, offset, dataLen, tempBuffer, (short)0);
         Util.arrayCopyNonAtomic(tempBuffer, (short)0, cyphertext, ctOffset, len);
         cardKey.getKey(tempBuffer, (short)0);
-        Crypto.hmac_sha256.init(tempBuffer, (short)0, (short)32);
-        Crypto.hmac_sha256.update(iv, (short)0, (short)16);
-        Crypto.hmac_sha256.doFinal(cyphertext, ctOffset, len, tempBuffer, (short)0);
+        Crypto.hmacSha256.init(tempBuffer, (short)0, (short)32);
+        Crypto.hmacSha256.update(iv, (short)0, (short)16);
+        Crypto.hmacSha256.doFinal(cyphertext, ctOffset, len, tempBuffer, (short)0);
         short hmacLen = (short)32;
         // if we are hitting the limit
         if((short)(len+hmacLen) == (short)256){

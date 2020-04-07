@@ -43,6 +43,8 @@ public class MemoryCardApplet extends TeapotApplet{
     private static final byte CMD_PIN                 = (byte)0x03;
     private static final byte CMD_WIPE                = (byte)0x04;
     private static final byte CMD_STORAGE             = (byte)0x05;
+    // TODO: reestablish cahnnel without PIN lock
+    // private static final byte CMD_REESTABLISH_SC      = (byte)0x06;
 
     private static final byte SUBCMD_DEFAULT          = (byte)0x00;
     // pin
@@ -138,11 +140,21 @@ public class MemoryCardApplet extends TeapotApplet{
         case INS_SET_HOST_PUBKEY:
             // this one uses random key from host and
             // static key from card - simple key agreement
+
+            // first - lock the card to avoid active MITM
+            if(pinIsSet && pin.isValidated()){
+                pin.reset();
+            }
             setHostPubkey(apdu);
             break;
         case INS_SET_HOST_GET_EPH:
             // this one uses random keys from both parties
             // more secure, but probably uses EEPROM :(
+
+            // first - lock the card to avoid active MITM
+            if(pinIsSet && pin.isValidated()){
+                pin.reset();
+            }
             setHostGetEphimerial(apdu);
             break;
         case INS_SECURE_MESSAGE:

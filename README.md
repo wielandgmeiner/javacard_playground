@@ -8,7 +8,8 @@ Work in progress, documentation for classes and applets is in the [`doc/`](./doc
 
 - [`Teapot`](./doc/Teapot.md) - a very simple "Hello world" class that doesn't use any PIN protection or secure communication. It can only store up to `255` bytes of data and give it back on request. Perfect for testing communication with the card.
 - [`MemoryCard`](./doc/MemoryCard.md) - adds PIN protection and secure communication. All functionality of the `Teapot` is still there.
-- [`BlindOracle`](./doc/BlindOracle.md) - allows bip32 and bip39 key derivation so the key never leaves the card. Includes nonce blinding protocol to minimize trust in proprietary stuff deployed on the card. All functionality of the `MemoryCard` is still there.
+- [`Calculator`](./doc/Calculator.md) - some ariphmetics on the card - bip32, hmac, inversion, point addition.
+- [`BlindOracle`](./doc/BlindOracle.md) - allows bip32 key derivation so the key never leaves the card. Includes nonce blinding protocol to minimize trust in proprietary stuff deployed on the card. All functionality of the `MemoryCard` is still there.
 - [`HardwareSpaghettiMonster`](./doc/HardwareSpaghettiMonster.md) - should add custom policies to the card.
 
 For `Teapot` and `MemoryCard` any JavaCard should work. For `BlindOracle` or `HardwareSpaghettiMonster` [NXP J3H145](https://www.smartcardfocus.com/shop/ilp/id~879/nxp-j3h145-dual-interface-java-card-144k/p/index.shtml) should work fine.

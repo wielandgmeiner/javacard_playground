@@ -20,6 +20,9 @@
       <cap output="MemoryCardApplet.cap" sources="src/toys">
         <applet class="toys.MemoryCardApplet" aid="B00B5111CB01"/>
       </cap>
+      <cap output="CalculatorApplet.cap" sources="src/toys">
+        <applet class="toys.CalculatorApplet" aid="B00B5111CC01"/>
+      </cap>
     </javacard>
   </target>
 </project>

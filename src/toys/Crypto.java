@@ -21,13 +21,17 @@ import javacardx.crypto.Cipher;
 public class Crypto{
     static public RandomData random;
     static public MessageDigest sha256;
-    static public HMACDigest hmac_sha256;
+    static public MessageDigest sha512;
+    static public HMACDigest hmacSha256;
+    static public HMACDigest hmacSha512;
     static public Cipher cipher;
 
     static public void init(){
         random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
         sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
-        hmac_sha256 = new HMACDigest(sha256, HMACDigest.ALG_SHA_256_BLOCK_SIZE);
+        sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
+        hmacSha256 = new HMACDigest(sha256, HMACDigest.ALG_SHA_256_BLOCK_SIZE);
+        hmacSha512 = new HMACDigest(sha512, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
         cipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
     }
 }
