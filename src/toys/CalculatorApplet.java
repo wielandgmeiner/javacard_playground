@@ -126,17 +126,11 @@ public class CalculatorApplet extends Applet{
                         byte[] b,     short bOff, 
                         byte[] out,   short outOff, 
                         byte[] prime, short pOff){
-        // actual addition
-        short carry = 0;
-        for(short i=31; i>=0; i--){
-            carry = (short)((short)(a[(short)(aOff+i)]&0xFF)+(short)(b[(short)(bOff+i)]&0xFF)+carry);
-            scratch[i] = (byte)carry;
-            carry = (short)(carry>>8);
-        }
-        // modulo subtraction:
+        // addition with carry
+        short carry = add(a, aOff, b, bOff, scratch, (short)0);
         // subtract in any case and store result in output buffer
-        short scarry = sub(scratch, (short)0, prime, pOff, out, outOff);
-        // check if we needed to subtract
+        short scarry = subtract(scratch, (short)0, prime, pOff, out, outOff);
+        // check if we actually needed to subtract
         if(carry!=0 || scarry==0){
             // we are fine, but we need to copy something, 
             // so let's copy output buffer to temp buffer
@@ -146,8 +140,26 @@ public class CalculatorApplet extends Applet{
             Util.arrayCopyNonAtomic(scratch, (short)0, out, outOff, (short)32);
         }
     }
-    // constant time modulo subtraction
-    private short sub(byte[] a, short aOff, 
+    // addition of two 256-bit numbers, returns carry
+    // WARNING: can't do subtraction in place with different offsets
+    // output buffer should be a different one, 
+    // use temp buffer, scratch for example
+    private short add(byte[] a, short aOff,
+                      byte[] b, short bOff,
+                      byte[] out, short outOff){
+        short carry = 0;
+        for(short i=31; i>=0; i--){
+            carry = (short)((short)(a[(short)(aOff+i)]&0xFF)+(short)(b[(short)(bOff+i)]&0xFF)+carry);
+            scratch[i] = (byte)carry;
+            carry = (short)(carry>>8);
+        }
+        return carry;
+    }
+    // subtraction of two 256-bit numbers, returns carry
+    // WARNING: can't do subtraction in place with different offsets
+    // output buffer should be a different one, 
+    // use temp buffer, scratch for example
+    private short subtract(byte[] a, short aOff, 
                      byte[] b, short bOff,
                      byte[] out, short outOff){
         short carry = 0;
@@ -162,7 +174,7 @@ public class CalculatorApplet extends Applet{
     private boolean isGreater(byte[] a, short aOff,
                               byte[] b, short bOff){
         // if a more than b, b-a will be negative - we will get non-zero carry
-        return (sub(b, bOff, a, aOff, scratch, (short)0)!=0);
+        return (subtract(b, bOff, a, aOff, scratch, (short)0)!=0);
     }
     // checks that buffer contains a list of elements
     // encoded as <len><data><len><data>...
