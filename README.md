@@ -83,6 +83,21 @@ Jupyter notebook with some examples for applets are in [`jupyter/`](jupyter/) fo
 - [keycard.tech](https://keycard.tech/) - JavaCard applet with BIP-32 support
 - https://www.youtube.com/watch?v=vd0-Uhx2OoQ - nice talk about JavaCards and open-source ecosystem
 
+# Cards that make sense
+
+Compatibility table: https://www.fi.muni.cz/~xsvenda/jcalgtest/table.html
+
+## Algorithms
+
+`ALG_EC_SVDP_DH_PLAIN` should be there. Many cards support it. Not necessarily `ALG_EC_SVDP_DH_PLAIN_XY`. Required for point multiplication (other than G, i.e. for Schnorr)
+
+`TYPE_EC_FP_PRIVATE_TRANSIENT` - useful for bip32 derivation
+Infineon SLE78 JCard, G&D Smartcafe 7.0, NXP JCOP4 P71D321, NXP JCOP4 J3R200
+Taisys SIMoME Vault
+
+`ALG_HMAC_SHA512` - useful for fast PBKDF2 in BIP-39
+Taisys SIMoME Vault
+
 # Notes
 
 Key for [keycard.tech](https://keycard.tech/): `c212e073ff8b4bbfaff4de8ab655221f`

@@ -3,6 +3,7 @@ package toys;
 
 // import using java card API interface.
 import javacard.framework.*;
+import javacard.security.*;
 
 /* 
  * Package: toys
@@ -21,8 +22,12 @@ public class CalculatorApplet extends Applet{
     // finite field math
     private static final byte INS_ADDMOD_FP            = (byte)0xA5;
     private static final byte INS_ADDMOD_N             = (byte)0xA6;
+    // bip32
+    private static final byte INS_XPRV_CHILD           = (byte)0xA7;
 
     private byte[] scratch;
+    private ECPrivateKey bip32tempKey;
+
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -35,7 +40,9 @@ public class CalculatorApplet extends Applet{
     public CalculatorApplet(){
         Secp256k1.init();
         Crypto.init();
-        scratch = JCSystem.makeTransientByteArray((short)32, JCSystem.CLEAR_ON_DESELECT);
+        scratch = JCSystem.makeTransientByteArray((short)65, JCSystem.CLEAR_ON_DESELECT);
+        bip32tempKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
+        Secp256k1.setCommonCurveParameters(bip32tempKey);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -114,12 +121,47 @@ public class CalculatorApplet extends Applet{
             addMod(buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_R, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
+        case INS_XPRV_CHILD:
+            if(numElements != 2){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            // TODO: check args len
+            xprvChild(buf, (short)(offset+1), buf, (short)(offset+67), buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)65);
+            break;
         default:
             // If you don't know the INS, throw an exception.
             buf[0] = numElements;
             apdu.setOutgoingAndSend((short)0, (short)1);
             // ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
+    }
+    // pass xprv without prefix i.e. <seed>0x00<prv>
+    private void xprvChild(byte[] xprv, short xprvOff,
+                           byte[] idx,  short idxOff,
+                           byte[] out,  short outOff){
+        // TODO: check if idx is hardened or not
+        Crypto.hmacSha512.init(xprv, xprvOff, (short)32);
+        if((idx[idxOff]&0xFF)>=0x80){
+            Crypto.hmacSha512.update(xprv, (short)(xprvOff+32), (short)33);            
+        }else{
+            bip32tempKey.setS(xprv, (short)(xprvOff+33), (short)32);
+            Secp256k1.pointMultiply(bip32tempKey, Secp256k1.SECP256K1_G, (short)0, (short)65, scratch, (short)0);
+            scratch[(short)0] = (byte)(0x02+(scratch[(short)64] & 1));
+            Crypto.hmacSha512.update(scratch, (short)0, (short)33);
+        }
+        // add index
+        Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, scratch, (short)0);
+        // TODO: check if result is less than N
+        // tweak private key modulo N
+        addMod(xprv, (short)(xprvOff+33), 
+               scratch, (short)0, 
+               out, (short)(outOff+33),
+               Secp256k1.SECP256K1_R, (short)0);
+        // copy chaincode
+        Util.arrayCopyNonAtomic(scratch, (short)32, out, outOff, (short)32);
+        // xprv flag
+        out[(short)(outOff+32)] = (byte)0;
     }
     // constant time modulo addition
     // can tweak in place
