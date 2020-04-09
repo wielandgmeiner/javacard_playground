@@ -35,7 +35,7 @@ public class CalculatorApplet extends Applet{
     public CalculatorApplet(){
         Secp256k1.init();
         Crypto.init();
-        scratch = new byte[32];
+        scratch = JCSystem.makeTransientByteArray((short)32, JCSystem.CLEAR_ON_DESELECT);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -122,14 +122,15 @@ public class CalculatorApplet extends Applet{
         }
     }
     // constant time modulo addition
+    // can tweak in place
     private void addMod(byte[] a,     short aOff, 
                         byte[] b,     short bOff, 
                         byte[] out,   short outOff, 
-                        byte[] prime, short pOff){
+                        byte[] mod,   short modOff){
         // addition with carry
         short carry = add(a, aOff, b, bOff, scratch, (short)0);
         // subtract in any case and store result in output buffer
-        short scarry = subtract(scratch, (short)0, prime, pOff, out, outOff);
+        short scarry = subtract(scratch, (short)0, mod, modOff, out, outOff);
         // check if we actually needed to subtract
         if(carry!=0 || scarry==0){
             // we are fine, but we need to copy something, 
