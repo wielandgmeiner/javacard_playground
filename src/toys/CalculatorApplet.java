@@ -15,6 +15,7 @@ public class CalculatorApplet extends Applet{
     // Define the value of CLA/INS in APDU, you can also define P1, P2.
     private static final byte CLA_CALC                 = (byte)0xB0;
 
+    private static final byte PBKDF2_HMAC_SHA512       = (byte)0xA0;
     private static final byte INS_SHA256               = (byte)0xA1;
     private static final byte INS_HMAC_SHA256          = (byte)0xA2;
     private static final byte INS_SHA512               = (byte)0xA3;
@@ -31,6 +32,8 @@ public class CalculatorApplet extends Applet{
 
     private byte[] scratch;
     private ECPrivateKey bip32tempKey;
+    private byte[] ikey;
+    private byte[] okey;
 
 
     // Create an instance of the Applet subclass using its constructor, 
@@ -47,6 +50,9 @@ public class CalculatorApplet extends Applet{
         scratch = JCSystem.makeTransientByteArray((short)65, JCSystem.CLEAR_ON_DESELECT);
         bip32tempKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
         Secp256k1.setCommonCurveParameters(bip32tempKey);
+        // for pbkdf2
+        ikey = JCSystem.makeTransientByteArray(HMACDigest.ALG_SHA_512_BLOCK_SIZE, JCSystem.CLEAR_ON_DESELECT);
+        okey = JCSystem.makeTransientByteArray(HMACDigest.ALG_SHA_512_BLOCK_SIZE, JCSystem.CLEAR_ON_DESELECT);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -170,11 +176,60 @@ public class CalculatorApplet extends Applet{
                       buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
             break;
+        case PBKDF2_HMAC_SHA512:
+            if(numElements != 3){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            short iterations = Util.getShort(buf, (short)(offset+1));
+            pbkdf2(buf, (short)(offset+4), buf[(short)(offset+3)], 
+                   buf, (short)(offset+5+buf[(short)(offset+3)]), buf[(short)(offset+4+buf[(short)(offset+3)])], 
+                   iterations,
+                   buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)64);
+            break;
         default:
             // If you don't know the INS, throw an exception.
             buf[0] = numElements;
             apdu.setOutgoingAndSend((short)0, (short)1);
             // ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+        }
+    }
+    private void pbkdf2(byte[] pass, short pOff, short pLen,
+                        byte[] salt, short sOff, short sLen,
+                        short iterations,
+                        byte[] out, short outOff){
+        if(pLen > HMACDigest.ALG_SHA_512_BLOCK_SIZE) {
+            Crypto.sha512.reset();
+            Crypto.sha512.doFinal(pass, pOff, pLen, ikey, (short)0);
+        }else{
+            Util.arrayFillNonAtomic(ikey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE, (byte)0);
+            Util.arrayCopyNonAtomic(pass, pOff, ikey, (short)0, pLen);
+        }
+        Util.arrayCopyNonAtomic(ikey, (short)0, okey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
+        for(short i = (short)0; i < HMACDigest.ALG_SHA_512_BLOCK_SIZE; i++) {
+            ikey[i] = (byte)(ikey[i]^HMACDigest.IPAD);
+            okey[i] = (byte)(okey[i]^HMACDigest.OPAD);
+        }
+        // i = 1
+        Util.arrayFillNonAtomic(scratch, (short)0, (short)4, (byte)0);
+        scratch[3] = (byte)1;
+        Crypto.sha512.reset();
+        // U
+        Crypto.sha512.update(ikey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
+        Crypto.sha512.update(salt, sOff, sLen);
+        Crypto.sha512.doFinal(scratch, (short)0, (short)4, scratch, (short)0);
+        Crypto.sha512.update(okey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
+        Crypto.sha512.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
+
+        Util.arrayCopyNonAtomic(scratch, (short)0, out, outOff, (short)64);
+        for(short j=(short)2; j<=iterations; j++){
+            Crypto.sha512.update(ikey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
+            Crypto.sha512.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
+            Crypto.sha512.update(okey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
+            Crypto.sha512.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
+            for(short i = (short)0; i < 64; i++) {
+                out[(short)(outOff+i)] = (byte)(out[(short)(outOff+i)]^scratch[i]);
+            }
         }
     }
     // pass xprv without prefix i.e. <chaincode>0x00<prv>

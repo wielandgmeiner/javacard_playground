@@ -50,8 +50,7 @@ public class HMACDigest {
             Util.arrayFillNonAtomic(key, (short)0, blockSize, (byte)0);
             Util.arrayCopyNonAtomic(hmacKey, offset, key, (short)0, len);
         }
-        short i = (short)0;
-        for(i = (short)0; i < blockSize; i++) {
+        for(short i = (short)0; i < blockSize; i++) {
             key[i] = (byte)(key[i]^IPAD);
         }
         hash.reset();
