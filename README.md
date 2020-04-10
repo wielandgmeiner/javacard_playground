@@ -91,6 +91,8 @@ Compatibility table: https://www.fi.muni.cz/~xsvenda/jcalgtest/table.html
 
 `ALG_EC_SVDP_DH_PLAIN` should be there. Many cards support it. Not necessarily `ALG_EC_SVDP_DH_PLAIN_XY`. Required for point multiplication (other than G, i.e. for Schnorr)
 
+`ALG_EC_PACE_GM` is a nice one - allows point addition. AFAIK available only on NXP JCOP3 J3H145 and NXP JCOP4 series.
+
 `TYPE_EC_FP_PRIVATE_TRANSIENT` - useful for bip32 derivation
 Infineon SLE78 JCard, G&D Smartcafe 7.0, NXP JCOP4 P71D321, NXP JCOP4 J3R200
 Taisys SIMoME Vault

@@ -22,8 +22,12 @@ public class CalculatorApplet extends Applet{
     // finite field math
     private static final byte INS_ADDMOD_FP            = (byte)0xA5;
     private static final byte INS_ADDMOD_N             = (byte)0xA6;
+    // ecc
+    private static final byte INS_ECC_TWEAK_ADD        = (byte)0xA7;
+    private static final byte INS_ECC_ADD              = (byte)0xA8;
     // bip32
-    private static final byte INS_XPRV_CHILD           = (byte)0xA7;
+    private static final byte INS_XPRV_CHILD           = (byte)0xA9;
+    private static final byte INS_XPUB_CHILD           = (byte)0xAA;
 
     private byte[] scratch;
     private ECPrivateKey bip32tempKey;
@@ -121,12 +125,49 @@ public class CalculatorApplet extends Applet{
             addMod(buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_R, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
+        case INS_ECC_TWEAK_ADD:
+            if(numElements != 2){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            bip32tempKey.setS(buf, (short)(offset+1), (short)32);
+            Secp256k1.tweakAdd(bip32tempKey, 
+                               buf, (short)(offset+34), (short)65, 
+                               buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)65);
+            break;
+        case INS_ECC_ADD:
+            if(numElements != 2){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            Util.arrayFillNonAtomic(scratch, (short)0, (short)32, (byte)0);
+            scratch[31] = (byte)1;
+            bip32tempKey.setS(scratch, (short)0, (short)32);
+            bip32tempKey.setG(buf, (short)(offset+1), (short)65);
+            Secp256k1.tweakAdd(bip32tempKey, 
+                               buf, (short)(offset+67), (short)65, 
+                               buf, (short)0);
+            bip32tempKey.setG(Secp256k1.SECP256K1_G, (short)0, (short)65);
+            apdu.setOutgoingAndSend((short)0, (short)65);
+            break;
+        // <xprv><index>
         case INS_XPRV_CHILD:
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             // TODO: check args len
             xprvChild(buf, (short)(offset+1), buf, (short)(offset+67), buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)65);
+            break;
+        // <xpub><index><uncompressed pubkey>
+        case INS_XPUB_CHILD:
+            if(numElements != 3){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            // TODO: check args len
+            xpubChild(buf, (short)(offset+1), 
+                      buf, (short)(offset+67), 
+                      buf, (short)(offset+67+5), 
+                      buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
             break;
         default:
@@ -136,11 +177,12 @@ public class CalculatorApplet extends Applet{
             // ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
     }
-    // pass xprv without prefix i.e. <seed>0x00<prv>
+    // pass xprv without prefix i.e. <chaincode>0x00<prv>
+    // WARNING: uses scratch[:65]
     private void xprvChild(byte[] xprv, short xprvOff,
                            byte[] idx,  short idxOff,
                            byte[] out,  short outOff){
-        // TODO: check if idx is hardened or not
+
         Crypto.hmacSha512.init(xprv, xprvOff, (short)32);
         if((idx[idxOff]&0xFF)>=0x80){
             Crypto.hmacSha512.update(xprv, (short)(xprvOff+32), (short)33);            
@@ -160,11 +202,37 @@ public class CalculatorApplet extends Applet{
                Secp256k1.SECP256K1_R, (short)0);
         // copy chaincode
         Util.arrayCopyNonAtomic(scratch, (short)32, out, outOff, (short)32);
-        // xprv flag
+        // set xprv flag
         out[(short)(outOff+32)] = (byte)0;
+    }
+    // pass xpub without prefix i.e. <chaincode><pubkey>
+    // WARNING: uses scratch[:65]
+    private void xpubChild(byte[] xpub, short xpubOff,
+                           byte[] idx,  short idxOff,
+                           byte[] fullpub, short fullpubOff, // for now
+                           byte[] out,  short outOff){
+
+        Crypto.hmacSha512.init(xpub, xpubOff, (short)32);
+        // can't do hardened with xpubs
+        if((idx[idxOff]&0xFF)>=0x80){
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }else{
+            Crypto.hmacSha512.update(xpub, (short)(xpubOff+32), (short)33);
+        }
+        // add index
+        Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, scratch, (short)0);
+        // TODO: check if result is less than N
+        // tweak public key
+        bip32tempKey.setS(scratch, (short)0, (short)32);
+        Secp256k1.tweakAdd(bip32tempKey, 
+                           fullpub, fullpubOff, (short)65,
+                           out, (short)(outOff+32));
+        // copy chaincode
+        Util.arrayCopyNonAtomic(scratch, (short)32, out, outOff, (short)32);
     }
     // constant time modulo addition
     // can tweak in place
+    // WARNING: uses scratch[:32]
     private void addMod(byte[] a,     short aOff, 
                         byte[] b,     short bOff, 
                         byte[] out,   short outOff, 
@@ -174,6 +242,8 @@ public class CalculatorApplet extends Applet{
         // subtract in any case and store result in output buffer
         short scarry = subtract(scratch, (short)0, mod, modOff, out, outOff);
         // check if we actually needed to subtract
+        // TODO: remove branching and use scratch index instead
+        //       this would require refactoring bip32xprv as well
         if(carry!=0 || scarry==0){
             // we are fine, but we need to copy something, 
             // so let's copy output buffer to temp buffer
@@ -202,6 +272,7 @@ public class CalculatorApplet extends Applet{
     // WARNING: can't do subtraction in place with different offsets
     // output buffer should be a different one, 
     // use temp buffer, scratch for example
+    // TODO: get rid of branching in carry assignment
     private short subtract(byte[] a, short aOff, 
                      byte[] b, short bOff,
                      byte[] out, short outOff){

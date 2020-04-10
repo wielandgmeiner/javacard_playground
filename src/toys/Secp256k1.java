@@ -46,11 +46,13 @@ public class Secp256k1 {
 
     static final short SECP256K1_KEY_SIZE = 256;
 
-    private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
-
+    // constants from JavaCard 3.0.5
+    private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6;
+    private static final byte ALG_EC_PACE_GM          = 5;
 
     static private KeyAgreement ecMult;
     static private KeyAgreement ecMultX;
+    static private KeyAgreement ecAdd;
     static private Signature sig;
 
     /**
@@ -59,6 +61,7 @@ public class Secp256k1 {
     static void init() {
         ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
         ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
+        ecAdd = KeyAgreement.getInstance(ALG_EC_PACE_GM, false);
         sig = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
     }
 
@@ -102,6 +105,19 @@ public class Secp256k1 {
     {
         ecMult.init(privateKey);
         return ecMult.generateSecret(point, pointOffset, pointLen, out, outOffset);
+    }
+    /**
+     * Adds tweak*G to the point. Returs P+tweak*G.
+     * If you want to add two points: P1 + P2
+     * set tweak=1, tweak.G = P1, point = P2 -> you'll get it.
+     */
+    static short tweakAdd(
+                    ECPrivateKey tweak,
+                    byte[] point, short pOff, short pLen,
+                    byte[] out, short outOff
+                ){
+        ecAdd.init(tweak);
+        return ecAdd.generateSecret(point, pOff, pLen, out, outOff);
     }
     /**
      * Preforms ECDH key agreement. 
