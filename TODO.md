@@ -8,6 +8,11 @@ We can encrypt all secret data in the card with a key derived from internal secr
 - anti-tamper counter
 - ripemd160 lib? - we need it for xpub fingerprints, but it's not must-have
 
+# Helper functions
+
+- TransientStack or something with reserve(short) and release(short) methods
+- Available features - check what algorithms are available and use them
+
 # Math
 
 Several important things to implement:
@@ -25,7 +30,7 @@ pbkdf2-hmac-sha512:
   - sha512 is supported
   - hmac is already implement for arbitrary hash functions
   - pbkdf2 with 64-byte out can be implemented easily
-  - it's increadibly slow (a few minutes), so makes sense to implement it only if we really-really-really need it.
+  - it's increadibly slow (74 seconds), so makes sense to use it only if we really-really-really need it. Otherwise default seed with empty password can be cached and used.
 
 ```py
 # https://en.wikipedia.org/wiki/PBKDF2

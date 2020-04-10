@@ -47,7 +47,7 @@ public class CalculatorApplet extends Applet{
     public CalculatorApplet(){
         Secp256k1.init();
         Crypto.init();
-        scratch = JCSystem.makeTransientByteArray((short)65, JCSystem.CLEAR_ON_DESELECT);
+        scratch = JCSystem.makeTransientByteArray((short)130, JCSystem.CLEAR_ON_DESELECT);
         bip32tempKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
         Secp256k1.setCommonCurveParameters(bip32tempKey);
         // for pbkdf2
@@ -198,36 +198,40 @@ public class CalculatorApplet extends Applet{
                         byte[] salt, short sOff, short sLen,
                         short iterations,
                         byte[] out, short outOff){
-        if(pLen > HMACDigest.ALG_SHA_512_BLOCK_SIZE) {
-            Crypto.sha512.reset();
-            Crypto.sha512.doFinal(pass, pOff, pLen, ikey, (short)0);
+        // put into RAM, it will slightly speed up calculations
+        short blockSize = HMACDigest.ALG_SHA_512_BLOCK_SIZE;
+        byte ipad = HMACDigest.IPAD;
+        byte opad = HMACDigest.OPAD;
+        MessageDigest hash = Crypto.sha512;
+        hash.reset();
+        if(pLen > blockSize) {
+            hash.doFinal(pass, pOff, pLen, ikey, (short)0);
         }else{
-            Util.arrayFillNonAtomic(ikey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE, (byte)0);
+            Util.arrayFillNonAtomic(ikey, (short)0, blockSize, (byte)0);
             Util.arrayCopyNonAtomic(pass, pOff, ikey, (short)0, pLen);
         }
-        Util.arrayCopyNonAtomic(ikey, (short)0, okey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
-        for(short i = (short)0; i < HMACDigest.ALG_SHA_512_BLOCK_SIZE; i++) {
-            ikey[i] = (byte)(ikey[i]^HMACDigest.IPAD);
-            okey[i] = (byte)(okey[i]^HMACDigest.OPAD);
+        Util.arrayCopyNonAtomic(ikey, (short)0, okey, (short)0, blockSize);
+        for(short i = (short)0; i < blockSize; i++) {
+            ikey[i] = (byte)(ikey[i]^ipad);
+            okey[i] = (byte)(okey[i]^opad);
         }
         // i = 1
         Util.arrayFillNonAtomic(scratch, (short)0, (short)4, (byte)0);
         scratch[3] = (byte)1;
-        Crypto.sha512.reset();
         // U
-        Crypto.sha512.update(ikey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
-        Crypto.sha512.update(salt, sOff, sLen);
-        Crypto.sha512.doFinal(scratch, (short)0, (short)4, scratch, (short)0);
-        Crypto.sha512.update(okey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
-        Crypto.sha512.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
+        hash.update(ikey, (short)0, blockSize);
+        hash.update(salt, sOff, sLen);
+        hash.doFinal(scratch, (short)0, (short)4, scratch, (short)0);
+        hash.update(okey, (short)0, blockSize);
+        hash.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
 
         Util.arrayCopyNonAtomic(scratch, (short)0, out, outOff, (short)64);
         for(short j=(short)2; j<=iterations; j++){
-            Crypto.sha512.update(ikey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
-            Crypto.sha512.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
-            Crypto.sha512.update(okey, (short)0, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
-            Crypto.sha512.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
-            for(short i = (short)0; i < 64; i++) {
+            hash.update(ikey, (short)0, blockSize);
+            hash.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
+            hash.update(okey, (short)0, blockSize);
+            hash.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
+            for(short i = (short)0; i < (short)64; i++) {
                 out[(short)(outOff+i)] = (byte)(out[(short)(outOff+i)]^scratch[i]);
             }
         }
@@ -248,15 +252,15 @@ public class CalculatorApplet extends Applet{
             Crypto.hmacSha512.update(scratch, (short)0, (short)33);
         }
         // add index
-        Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, scratch, (short)0);
+        Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, scratch, (short)64);
         // TODO: check if result is less than N
         // tweak private key modulo N
         addMod(xprv, (short)(xprvOff+33), 
-               scratch, (short)0, 
+               scratch, (short)64, 
                out, (short)(outOff+33),
                Secp256k1.SECP256K1_R, (short)0);
         // copy chaincode
-        Util.arrayCopyNonAtomic(scratch, (short)32, out, outOff, (short)32);
+        Util.arrayCopyNonAtomic(scratch, (short)(64+32), out, outOff, (short)32);
         // set xprv flag
         out[(short)(outOff+32)] = (byte)0;
     }
@@ -295,18 +299,12 @@ public class CalculatorApplet extends Applet{
         // addition with carry
         short carry = add(a, aOff, b, bOff, scratch, (short)0);
         // subtract in any case and store result in output buffer
-        short scarry = subtract(scratch, (short)0, mod, modOff, out, outOff);
+        short scarry = subtract(scratch, (short)0, mod, modOff, scratch, (short)32);
+        // scarry is 0 or -1. If 0 - we needed to subtract.
+        scarry = (short)(1+scarry);
         // check if we actually needed to subtract
-        // TODO: remove branching and use scratch index instead
-        //       this would require refactoring bip32xprv as well
-        if(carry!=0 || scarry==0){
-            // we are fine, but we need to copy something, 
-            // so let's copy output buffer to temp buffer
-            Util.arrayCopyNonAtomic(out, outOff, scratch, (short)0, (short)32);
-        }else{
-            // there was no overflow - copy from temp buffer to output
-            Util.arrayCopyNonAtomic(scratch, (short)0, out, outOff, (short)32);
-        }
+        short offset = (short)(32*(carry|scarry));
+        Util.arrayCopyNonAtomic(scratch, offset, out, outOff, (short)32);
     }
     // addition of two 256-bit numbers, returns carry
     // WARNING: can't do subtraction in place with different offsets
@@ -318,7 +316,7 @@ public class CalculatorApplet extends Applet{
         short carry = 0;
         for(short i=31; i>=0; i--){
             carry = (short)((short)(a[(short)(aOff+i)]&0xFF)+(short)(b[(short)(bOff+i)]&0xFF)+carry);
-            scratch[i] = (byte)carry;
+            out[(short)(outOff+i)] = (byte)carry;
             carry = (short)(carry>>8);
         }
         return carry;
@@ -333,9 +331,9 @@ public class CalculatorApplet extends Applet{
                      byte[] out, short outOff){
         short carry = 0;
         for(short i=31; i>=0; i--){
-            carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)-carry);
+            carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)+carry);
             out[(short)(outOff+i)] = (byte)carry;
-            carry = (short)(((carry>>8)!=0) ? 1 : 0);
+            carry = (short)(carry>>8);
         }
         return carry;
     }

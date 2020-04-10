@@ -71,18 +71,18 @@ public class Secp256k1 {
      * @param key the key where the curve parameters must be set
      */
     static void setCommonCurveParameters(ECKey key) {
-        key.setA(SECP256K1_A, (short) 0x00, (short) SECP256K1_A.length);
-        key.setB(SECP256K1_B, (short) 0x00, (short) SECP256K1_B.length);
-        key.setFieldFP(SECP256K1_FP, (short) 0x00, (short) SECP256K1_FP.length);
-        key.setG(SECP256K1_G, (short) 0x00, (short) SECP256K1_G.length);
-        key.setR(SECP256K1_R, (short) 0x00, (short) SECP256K1_R.length);
+        key.setA(SECP256K1_A, (short)0, (short)SECP256K1_A.length);
+        key.setB(SECP256K1_B, (short)0, (short)SECP256K1_B.length);
+        key.setFieldFP(SECP256K1_FP, (short)0, (short)SECP256K1_FP.length);
+        key.setG(SECP256K1_G, (short)0, (short)SECP256K1_G.length);
+        key.setR(SECP256K1_R, (short)0, (short)SECP256K1_R.length);
         key.setK(SECP256K1_K);
     }
 
     static KeyPair newKeyPair() {
         KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, SECP256K1_KEY_SIZE);
-        setCommonCurveParameters((ECPrivateKey) kp.getPrivate());
-        setCommonCurveParameters((ECPublicKey) kp.getPublic());
+        setCommonCurveParameters((ECPrivateKey)kp.getPrivate());
+        setCommonCurveParameters((ECPublicKey)kp.getPublic());
         return kp;
     }
 

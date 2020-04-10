@@ -24,7 +24,6 @@ public class SecureChannel{
     static private byte sharedSecret[];
     static final private byte CARD_PREFIX[] = { (byte)'c', (byte)'a', (byte)'r', (byte)'d' };
     static final private byte HOST_PREFIX[] = { (byte)'h', (byte)'o', (byte)'s', (byte)'t' };
-    static final private short PREFIX_LEN = (short)4;
     static private AESKey cardKey;
     static private AESKey hostKey;
     static private byte iv[];
@@ -93,12 +92,12 @@ public class SecureChannel{
                             sharedSecret, (short)0);
         }
         Crypto.sha256.reset();
-        Crypto.sha256.update(CARD_PREFIX, (short)0, PREFIX_LEN);
+        Crypto.sha256.update(CARD_PREFIX, (short)0, (short)CARD_PREFIX.length);
         Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, tempBuffer, (short)0);
         cardKey.setKey(tempBuffer, (short)0);
 
         Crypto.sha256.reset();
-        Crypto.sha256.update(HOST_PREFIX, (short)0, PREFIX_LEN);
+        Crypto.sha256.update(HOST_PREFIX, (short)0, (short)HOST_PREFIX.length);
         Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, tempBuffer, (short)0);
         hostKey.setKey(tempBuffer, (short)0);
         // now we can set iv counter to zero
