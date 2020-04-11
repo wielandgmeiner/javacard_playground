@@ -30,11 +30,7 @@ public class CalculatorApplet extends Applet{
     private static final byte INS_XPRV_CHILD           = (byte)0xA9;
     private static final byte INS_XPUB_CHILD           = (byte)0xAA;
 
-    private byte[] scratch;
-    private ECPrivateKey bip32tempKey;
-    private byte[] ikey;
-    private byte[] okey;
-
+    private TransientStack stack;
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -47,12 +43,8 @@ public class CalculatorApplet extends Applet{
     public CalculatorApplet(){
         Secp256k1.init();
         Crypto.init();
-        scratch = JCSystem.makeTransientByteArray((short)130, JCSystem.CLEAR_ON_DESELECT);
-        bip32tempKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
-        Secp256k1.setCommonCurveParameters(bip32tempKey);
-        // for pbkdf2
-        ikey = JCSystem.makeTransientByteArray(HMACDigest.ALG_SHA_512_BLOCK_SIZE, JCSystem.CLEAR_ON_DESELECT);
-        okey = JCSystem.makeTransientByteArray(HMACDigest.ALG_SHA_512_BLOCK_SIZE, JCSystem.CLEAR_ON_DESELECT);
+        // allocate some memory in RAM for intermediate calculations
+        stack = new TransientStack((short)512);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -81,6 +73,9 @@ public class CalculatorApplet extends Applet{
         // }
         // Dispatch INS in APDU.
         short offset = (short)ISO7816.OFFSET_CDATA;
+
+        // clean up the stack before we start
+        stack.free();
 
         switch (buf[ISO7816.OFFSET_INS]){
         case INS_SHA256:
@@ -120,7 +115,7 @@ public class CalculatorApplet extends Applet{
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            addMod(buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_FP, (short)0);
+            FiniteField.addMod(stack, buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_FP, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_ADDMOD_N:
@@ -128,15 +123,15 @@ public class CalculatorApplet extends Applet{
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            addMod(buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_R, (short)0);
+            FiniteField.addMod(stack, buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_R, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_ECC_TWEAK_ADD:
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            bip32tempKey.setS(buf, (short)(offset+1), (short)32);
-            Secp256k1.tweakAdd(bip32tempKey, 
+            Secp256k1.tempPrivateKey.setS(buf, (short)(offset+1), (short)32);
+            Secp256k1.tweakAdd(Secp256k1.tempPrivateKey, 
                                buf, (short)(offset+34), (short)65, 
                                buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
@@ -145,14 +140,23 @@ public class CalculatorApplet extends Applet{
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            Util.arrayFillNonAtomic(scratch, (short)0, (short)32, (byte)0);
-            scratch[31] = (byte)1;
-            bip32tempKey.setS(scratch, (short)0, (short)32);
-            bip32tempKey.setG(buf, (short)(offset+1), (short)65);
-            Secp256k1.tweakAdd(bip32tempKey, 
+            short off = stack.allocate((short)32);
+            if(off < 0){ // failed to allocate
+                ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            }
+            // should be zero anyways, but just in case
+            Util.arrayFillNonAtomic(stack.buffer, off, (short)32, (byte)0);
+            stack.buffer[(short)(off+31)] = (byte)1;
+            Secp256k1.tempPrivateKey.setS(stack.buffer, off, (short)32);
+            // redeem the memory
+            stack.free((short)32);
+            // set G to our point
+            Secp256k1.tempPrivateKey.setG(buf, (short)(offset+1), (short)65);
+            Secp256k1.tweakAdd(Secp256k1.tempPrivateKey, 
                                buf, (short)(offset+67), (short)65, 
                                buf, (short)0);
-            bip32tempKey.setG(Secp256k1.SECP256K1_G, (short)0, (short)65);
+            // set G back to normal
+            Secp256k1.tempPrivateKey.setG(Secp256k1.SECP256K1_G, (short)0, (short)65);
             apdu.setOutgoingAndSend((short)0, (short)65);
             break;
         // <xprv><index>
@@ -161,7 +165,7 @@ public class CalculatorApplet extends Applet{
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             // TODO: check args len
-            xprvChild(buf, (short)(offset+1), buf, (short)(offset+67), buf, (short)0);
+            Bitcoin.xprvChild(stack, buf, (short)(offset+1), buf, (short)(offset+67), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
             break;
         // <xpub><index><uncompressed pubkey>
@@ -170,7 +174,8 @@ public class CalculatorApplet extends Applet{
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             // TODO: check args len
-            xpubChild(buf, (short)(offset+1), 
+            Bitcoin.xpubChild(stack, 
+                      buf, (short)(offset+1), 
                       buf, (short)(offset+67), 
                       buf, (short)(offset+67+5), 
                       buf, (short)0);
@@ -181,7 +186,8 @@ public class CalculatorApplet extends Applet{
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             short iterations = Util.getShort(buf, (short)(offset+1));
-            pbkdf2(buf, (short)(offset+4), buf[(short)(offset+3)], 
+            Crypto.pbkdf2(stack, // for temporary allocations
+                   buf, (short)(offset+4), buf[(short)(offset+3)], 
                    buf, (short)(offset+5+buf[(short)(offset+3)]), buf[(short)(offset+4+buf[(short)(offset+3)])], 
                    iterations,
                    buf, (short)0);
@@ -193,159 +199,6 @@ public class CalculatorApplet extends Applet{
             apdu.setOutgoingAndSend((short)0, (short)1);
             // ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
-    }
-    private void pbkdf2(byte[] pass, short pOff, short pLen,
-                        byte[] salt, short sOff, short sLen,
-                        short iterations,
-                        byte[] out, short outOff){
-        // put into RAM, it will slightly speed up calculations
-        short blockSize = HMACDigest.ALG_SHA_512_BLOCK_SIZE;
-        byte ipad = HMACDigest.IPAD;
-        byte opad = HMACDigest.OPAD;
-        MessageDigest hash = Crypto.sha512;
-        hash.reset();
-        if(pLen > blockSize) {
-            hash.doFinal(pass, pOff, pLen, ikey, (short)0);
-        }else{
-            Util.arrayFillNonAtomic(ikey, (short)0, blockSize, (byte)0);
-            Util.arrayCopyNonAtomic(pass, pOff, ikey, (short)0, pLen);
-        }
-        Util.arrayCopyNonAtomic(ikey, (short)0, okey, (short)0, blockSize);
-        for(short i = (short)0; i < blockSize; i++) {
-            ikey[i] = (byte)(ikey[i]^ipad);
-            okey[i] = (byte)(okey[i]^opad);
-        }
-        // i = 1
-        Util.arrayFillNonAtomic(scratch, (short)0, (short)4, (byte)0);
-        scratch[3] = (byte)1;
-        // U
-        hash.update(ikey, (short)0, blockSize);
-        hash.update(salt, sOff, sLen);
-        hash.doFinal(scratch, (short)0, (short)4, scratch, (short)0);
-        hash.update(okey, (short)0, blockSize);
-        hash.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
-
-        Util.arrayCopyNonAtomic(scratch, (short)0, out, outOff, (short)64);
-        for(short j=(short)2; j<=iterations; j++){
-            hash.update(ikey, (short)0, blockSize);
-            hash.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
-            hash.update(okey, (short)0, blockSize);
-            hash.doFinal(scratch, (short)0, (short)64, scratch, (short)0);
-            for(short i = (short)0; i < (short)64; i++) {
-                out[(short)(outOff+i)] = (byte)(out[(short)(outOff+i)]^scratch[i]);
-            }
-        }
-    }
-    // pass xprv without prefix i.e. <chaincode>0x00<prv>
-    // WARNING: uses scratch[:65]
-    private void xprvChild(byte[] xprv, short xprvOff,
-                           byte[] idx,  short idxOff,
-                           byte[] out,  short outOff){
-
-        Crypto.hmacSha512.init(xprv, xprvOff, (short)32);
-        if((idx[idxOff]&0xFF)>=0x80){
-            Crypto.hmacSha512.update(xprv, (short)(xprvOff+32), (short)33);            
-        }else{
-            bip32tempKey.setS(xprv, (short)(xprvOff+33), (short)32);
-            Secp256k1.pointMultiply(bip32tempKey, Secp256k1.SECP256K1_G, (short)0, (short)65, scratch, (short)0);
-            scratch[(short)0] = (byte)(0x02+(scratch[(short)64] & 1));
-            Crypto.hmacSha512.update(scratch, (short)0, (short)33);
-        }
-        // add index
-        Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, scratch, (short)64);
-        // TODO: check if result is less than N
-        // tweak private key modulo N
-        addMod(xprv, (short)(xprvOff+33), 
-               scratch, (short)64, 
-               out, (short)(outOff+33),
-               Secp256k1.SECP256K1_R, (short)0);
-        // copy chaincode
-        Util.arrayCopyNonAtomic(scratch, (short)(64+32), out, outOff, (short)32);
-        // set xprv flag
-        out[(short)(outOff+32)] = (byte)0;
-    }
-    // pass xpub without prefix i.e. <chaincode><pubkey>
-    // WARNING: uses scratch[:65]
-    private void xpubChild(byte[] xpub, short xpubOff,
-                           byte[] idx,  short idxOff,
-                           byte[] fullpub, short fullpubOff, // for now
-                           byte[] out,  short outOff){
-
-        Crypto.hmacSha512.init(xpub, xpubOff, (short)32);
-        // can't do hardened with xpubs
-        if((idx[idxOff]&0xFF)>=0x80){
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }else{
-            Crypto.hmacSha512.update(xpub, (short)(xpubOff+32), (short)33);
-        }
-        // add index
-        Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, scratch, (short)0);
-        // TODO: check if result is less than N
-        // tweak public key
-        bip32tempKey.setS(scratch, (short)0, (short)32);
-        Secp256k1.tweakAdd(bip32tempKey, 
-                           fullpub, fullpubOff, (short)65,
-                           out, (short)(outOff+32));
-        // copy chaincode
-        Util.arrayCopyNonAtomic(scratch, (short)32, out, outOff, (short)32);
-    }
-    // constant time modulo addition
-    // can tweak in place
-    // WARNING: uses scratch[:32]
-    private void addMod(byte[] a,     short aOff, 
-                        byte[] b,     short bOff, 
-                        byte[] out,   short outOff, 
-                        byte[] mod,   short modOff){
-        // addition with carry
-        short carry = add(a, aOff, b, bOff, scratch, (short)0);
-        // carry will be 1 only if we got it from addition or
-        // if result is larger than modulo
-        carry += isGreaterOrEqual(scratch, (short)0, mod, modOff);
-        // subtract in any case and store result in output buffer
-        subtract(scratch, (short)0, mod, modOff, out, outOff, carry);
-    }
-    // addition of two 256-bit numbers, returns carry
-    // WARNING: can't do subtraction in place with different offsets
-    // output buffer should be a different one, 
-    // use temp buffer, scratch for example
-    private short add(byte[] a, short aOff,
-                      byte[] b, short bOff,
-                      byte[] out, short outOff){
-        short carry = 0;
-        for(short i=31; i>=0; i--){
-            carry = (short)((short)(a[(short)(aOff+i)]&0xFF)+(short)(b[(short)(bOff+i)]&0xFF)+carry);
-            out[(short)(outOff+i)] = (byte)carry;
-            carry = (short)(carry>>8);
-        }
-        return carry;
-    }
-    // subtraction of two 256-bit numbers, returns carry
-    // WARNING: can't do subtraction in place with different offsets
-    // output buffer should be a different one, 
-    // use temp buffer, scratch for example
-    private short subtract(byte[] a, short aOff, 
-                     byte[] b, short bOff,
-                     byte[] out, short outOff, 
-                     short multiplier){
-        short carry = 0;
-        for(short i=31; i>=0; i--){
-            carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)*multiplier+carry);
-            out[(short)(outOff+i)] = (byte)carry;
-            carry = (short)(carry>>8);
-        }
-        return carry;
-    }
-    // constant time comparison
-    private short isGreaterOrEqual(byte[] a, short aOff,
-                                   byte[] b, short bOff){
-        // if a is smaller than b, a-b will be negative
-        // and we will get carry of -1
-        short carry = 0;
-        for(short i=31; i>=0; i--){
-            carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)+carry);
-            carry = (short)(carry>>8);
-        }
-        return (short)(1+carry);
     }
     // checks that buffer contains a list of elements
     // encoded as <len><data><len><data>...

@@ -1,8 +1,7 @@
 /* Do what the fuck you want license. */
 package toys;
 
-import javacard.framework.*;
-import javacard.security.*;
+import javacard.framework.Util;
 
 /* 
  * Package: toys

@@ -41,7 +41,7 @@ public class TransientStack{
     /**
      * @return offset in the buffer
      */
-    public short reserve(short size){
+    public short allocate(short size){
         if(size > available()){
             return (short)-1;
         }

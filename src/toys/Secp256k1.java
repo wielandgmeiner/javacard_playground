@@ -54,6 +54,7 @@ public class Secp256k1 {
     static private KeyAgreement ecMultX;
     static private KeyAgreement ecAdd;
     static private Signature sig;
+    static public ECPrivateKey tempPrivateKey;
 
     /**
      * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
@@ -63,6 +64,9 @@ public class Secp256k1 {
         ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
         ecAdd = KeyAgreement.getInstance(ALG_EC_PACE_GM, false);
         sig = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
+
+        tempPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
+        Secp256k1.setCommonCurveParameters(tempPrivateKey);
     }
 
     /**
