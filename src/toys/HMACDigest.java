@@ -15,6 +15,7 @@ public class HMACDigest {
     static final short ALG_SHA_256_BLOCK_SIZE = (short)64;
     static final short ALG_SHA_512_BLOCK_SIZE = (short)128;
 
+    // TODO: use stack
     private MessageDigest hash; // hash function
     private byte[] key;         // FIXME: should be a Key
     private byte[] intBuf;      // temp buffer for internal use
@@ -51,7 +52,7 @@ public class HMACDigest {
             Util.arrayCopyNonAtomic(hmacKey, offset, key, (short)0, len);
         }
         for(short i = (short)0; i < blockSize; i++) {
-            key[i] = (byte)(key[i]^IPAD);
+            key[i] ^= IPAD;
         }
         hash.reset();
         hash.update(key, (short)0, blockSize);
@@ -90,7 +91,7 @@ public class HMACDigest {
         hash.doFinal(msg, offset, len, intBuf, (short)0);
         short i = (short)0;
         for(i = (short)0; i < blockSize; i++) {
-            key[i] = (byte)(key[i]^IPAD^OPAD); // undo IPAD
+            key[i] ^= (IPAD^OPAD); // undo IPAD
         }
         hash.update(key, (short)0, blockSize);
         return hash.doFinal(intBuf, (short)0, hash.getLength(), outBuf, outOffset);

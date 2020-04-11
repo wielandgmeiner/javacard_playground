@@ -15,7 +15,8 @@ public class Bitcoin{
                            byte[] xprv, short xprvOff,
                            byte[] idx,  short idxOff,
                            byte[] out,  short outOff){
-        short off = st.allocate((short)65);
+        // 64 hmac, 32 random tweak
+        short off = st.allocate((short)96);
         if(off < 0){
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
@@ -33,9 +34,28 @@ public class Bitcoin{
         // add index
         Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, buf, off);
         // TODO: check if result is less than N
+        // tweaking by random number helps against DPA
+        // generate random number
+        FiniteField.getRandomElement(Secp256k1.SECP256K1_R, (short)0,
+                                     buf, (short)(off+64));
+        // add it to tweak
+        FiniteField.addMod(st, buf, (short)(off+64), 
+               buf, off,
+               buf, off,
+               Secp256k1.SECP256K1_R, (short)0);
         // tweak private key modulo N
         FiniteField.addMod(st, xprv, (short)(xprvOff+33), 
-               buf, off, 
+               buf, off,
+               buf, off,
+               Secp256k1.SECP256K1_R, (short)0);
+        // negate random number
+        FiniteField.subtract(Secp256k1.SECP256K1_R, (short)0,
+                             buf, (short)(off+64),
+                             buf, (short)(off+64),
+                             (short)1);
+        // add negative of the random
+        FiniteField.addMod(st, buf, (short)(off+64), 
+               buf, off,
                out, (short)(outOff+33),
                Secp256k1.SECP256K1_R, (short)0);
         // copy chaincode
@@ -68,11 +88,15 @@ public class Bitcoin{
         // TODO: check if result is less than N
         // tweak public key
         Secp256k1.tempPrivateKey.setS(buf, off, (short)32);
-        Secp256k1.tweakAdd(Secp256k1.tempPrivateKey, 
-                           fullpub, fullpubOff, (short)65,
-                           out, (short)(outOff+32));
         // copy chaincode
         Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
+        // tweak pubkey
+        Secp256k1.tweakAdd(Secp256k1.tempPrivateKey, 
+                           fullpub, fullpubOff, (short)65,
+                           buf, off);
+        Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+32), (short)33);
+        // set compressed byte
+        out[(short)(outOff+32)] = (byte)(0x02+(buf[(short)(off+64)] & 1));
         st.free((short)65);
     }
 }

@@ -9,6 +9,16 @@ import javacard.framework.*;
  * Class: FinalField
  */
 public class FiniteField{
+    // get random number up to max value
+    // max should be large enough as we are just trying over and over
+    // until we get correct number
+    static public void getRandomElement(byte[] max, short maxOff,
+                                        byte[] out, short outOff){
+        Crypto.random.generateData(out, outOff, (short)32);
+        while(isGreaterOrEqual(out, outOff, max, maxOff) > 0){
+            Crypto.random.generateData(out, outOff, (short)32);
+        }
+    }
     // constant time modulo addition
     // can tweak in place
     static public void addMod(TransientStack st,
@@ -46,7 +56,7 @@ public class FiniteField{
     // WARNING: can't do subtraction in place with different offsets
     // output buffer should be a different one, 
     // use temp buffer for example
-    static private short add(byte[] a, short aOff,
+    static public short add(byte[] a, short aOff,
                       byte[] b, short bOff,
                       byte[] out, short outOff){
         short carry = 0;
@@ -61,7 +71,7 @@ public class FiniteField{
     // WARNING: can't do subtraction in place with different offsets
     // output buffer should be a different one, 
     // use temp buffer for example
-    static private short subtract(byte[] a, short aOff, 
+    static public short subtract(byte[] a, short aOff, 
                      byte[] b, short bOff,
                      byte[] out, short outOff, 
                      short multiplier){

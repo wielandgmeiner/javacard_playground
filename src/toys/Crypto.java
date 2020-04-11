@@ -62,8 +62,8 @@ public class Crypto{
         }
         Util.arrayCopyNonAtomic(buf, ikeyOff, buf, okeyOff, blockSize);
         for(short i = (short)0; i < blockSize; i++) {
-            buf[(short)(ikeyOff+i)] = (byte)(buf[(short)(ikeyOff+i)]^ipad);
-            buf[(short)(okeyOff+i)] = (byte)(buf[(short)(okeyOff+i)]^opad);
+            buf[(short)(ikeyOff+i)] ^= ipad;
+            buf[(short)(okeyOff+i)] ^= opad;
         }
         // i = 1
         Util.arrayFillNonAtomic(buf, dataOff, (short)4, (byte)0);
@@ -82,7 +82,7 @@ public class Crypto{
             hash.update(buf, okeyOff, blockSize);
             hash.doFinal(buf, dataOff, (short)64, buf, dataOff);
             for(short i = (short)0; i < (short)64; i++) {
-                out[(short)(outOff+i)] = (byte)(out[(short)(outOff+i)]^buf[(short)(dataOff+i)]);
+                out[(short)(outOff+i)] ^= buf[(short)(dataOff+i)];
             }
         }
         // get our memory back
