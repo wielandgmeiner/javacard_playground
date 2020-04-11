@@ -298,13 +298,11 @@ public class CalculatorApplet extends Applet{
                         byte[] mod,   short modOff){
         // addition with carry
         short carry = add(a, aOff, b, bOff, scratch, (short)0);
+        // carry will be 1 only if we got it from addition or
+        // if result is larger than modulo
+        carry += isGreaterOrEqual(scratch, (short)0, mod, modOff);
         // subtract in any case and store result in output buffer
-        short scarry = subtract(scratch, (short)0, mod, modOff, scratch, (short)32);
-        // scarry is 0 or -1. If 0 - we needed to subtract.
-        scarry = (short)(1+scarry);
-        // check if we actually needed to subtract
-        short offset = (short)(32*(carry|scarry));
-        Util.arrayCopyNonAtomic(scratch, offset, out, outOff, (short)32);
+        subtract(scratch, (short)0, mod, modOff, out, outOff, carry);
     }
     // addition of two 256-bit numbers, returns carry
     // WARNING: can't do subtraction in place with different offsets
@@ -325,23 +323,29 @@ public class CalculatorApplet extends Applet{
     // WARNING: can't do subtraction in place with different offsets
     // output buffer should be a different one, 
     // use temp buffer, scratch for example
-    // TODO: get rid of branching in carry assignment
     private short subtract(byte[] a, short aOff, 
                      byte[] b, short bOff,
-                     byte[] out, short outOff){
+                     byte[] out, short outOff, 
+                     short multiplier){
         short carry = 0;
         for(short i=31; i>=0; i--){
-            carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)+carry);
+            carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)*multiplier+carry);
             out[(short)(outOff+i)] = (byte)carry;
             carry = (short)(carry>>8);
         }
         return carry;
     }
     // constant time comparison
-    private boolean isGreater(byte[] a, short aOff,
-                              byte[] b, short bOff){
-        // if a more than b, b-a will be negative - we will get non-zero carry
-        return (subtract(b, bOff, a, aOff, scratch, (short)0)!=0);
+    private short isGreaterOrEqual(byte[] a, short aOff,
+                                   byte[] b, short bOff){
+        // if a is smaller than b, a-b will be negative
+        // and we will get carry of -1
+        short carry = 0;
+        for(short i=31; i>=0; i--){
+            carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)+carry);
+            carry = (short)(carry>>8);
+        }
+        return (short)(1+carry);
     }
     // checks that buffer contains a list of elements
     // encoded as <len><data><len><data>...

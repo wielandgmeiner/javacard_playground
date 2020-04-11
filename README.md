@@ -100,6 +100,21 @@ Taisys SIMoME Vault
 `ALG_HMAC_SHA512` - useful for fast PBKDF2 in BIP-39
 Taisys SIMoME Vault
 
+# Don't write your own crypto
+
+But sometimes we have to... 
+Here we have modulo addition for bip32 key derivation, this one is critical.
+For public key uncompression we can use fast functions as no secrets are involved there.
+
+## Rules for crypto
+
+- No branching - if cases can be detected
+- Don't do case-via-offset - access time to elements with different indexes can be different
+- Use transient arrays when possible - it's orders of magnitude faster than EEPROM
+- Use `Key` class when possible, JC platforms secures them better than simple arrays
+- Encrypt-then-hmac is better than anything else
+- Use ephimerial keys when possible, they help against replay attacks
+
 # Notes
 
 Key for [keycard.tech](https://keycard.tech/): `c212e073ff8b4bbfaff4de8ab655221f`
