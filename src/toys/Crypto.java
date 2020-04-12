@@ -46,7 +46,8 @@ public class Crypto{
         MessageDigest hash = Crypto.sha512;
         hash.reset();
         // get temp buffer for ikey, okey and U
-        short ikeyOff = st.allocate((short)(blockSize*2+64));
+        short len = (short)(blockSize*2+64);
+        short ikeyOff = st.allocate(len);
         if(ikeyOff < 0){
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
@@ -86,6 +87,6 @@ public class Crypto{
             }
         }
         // get our memory back
-        st.free((short)(blockSize*2+64));
+        st.free(len);
     }
 }

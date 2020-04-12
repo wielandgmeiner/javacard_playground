@@ -29,6 +29,13 @@ public class CalculatorApplet extends Applet{
     // bip32
     private static final byte INS_XPRV_CHILD           = (byte)0xA9;
     private static final byte INS_XPUB_CHILD           = (byte)0xAA;
+    // abusing RSA engine
+    private static final byte INS_SQUARE               = (byte)0xAB;
+    private static final byte INS_CUBE                 = (byte)0xAC;
+    private static final byte INS_INVERSE              = (byte)0xAD;
+    // ecc again...
+    private static final byte INS_COMPRESS             = (byte)0xAE;
+    private static final byte INS_UNCOMPRESS           = (byte)0xAF;
 
     private TransientStack stack;
 
@@ -43,8 +50,9 @@ public class CalculatorApplet extends Applet{
     public CalculatorApplet(){
         Secp256k1.init();
         Crypto.init();
+        FiniteField.init();
         // allocate some memory in RAM for intermediate calculations
-        stack = new TransientStack((short)512);
+        stack = new TransientStack((short)1024);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -170,14 +178,13 @@ public class CalculatorApplet extends Applet{
             break;
         // <xpub><index><uncompressed pubkey>
         case INS_XPUB_CHILD:
-            if(numElements != 3){
+            if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             // TODO: check args len
             Bitcoin.xpubChild(stack, 
                       buf, (short)(offset+1), 
                       buf, (short)(offset+67), 
-                      buf, (short)(offset+67+5), 
                       buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
             break;
@@ -192,6 +199,41 @@ public class CalculatorApplet extends Applet{
                    iterations,
                    buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)64);
+            break;
+        case INS_SQUARE:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)2, buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)32);
+            break;
+        case INS_CUBE:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)3, buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)32);
+            break;
+        case INS_INVERSE:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)(-1), buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)32);
+            break;
+        case INS_COMPRESS:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            Secp256k1.compress(stack, buf, (short)(offset+1), buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)33);
+            break;
+        case INS_UNCOMPRESS:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            Secp256k1.uncompress(stack, buf, (short)(offset+1), buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)65);
             break;
         default:
             // If you don't know the INS, throw an exception.
@@ -208,7 +250,7 @@ public class CalculatorApplet extends Applet{
         short end = (short)(offset+len);
         byte numElements = (byte)0;
         while(offset < end){
-            offset += buf[offset];
+            offset += Util.makeShort((byte)0, buf[offset]);
             offset++;
             numElements++;
         }

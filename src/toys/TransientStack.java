@@ -9,6 +9,8 @@ import javacard.security.*;
  * Filename: TransientStack.java 
  * Class: TransientStack
  */
+// should it be called TransientHeap instead?
+// it kinda operates as a stack, but...
 public class TransientStack{
     public byte[] buffer;
     private short[] cur;
@@ -56,7 +58,7 @@ public class TransientStack{
         if(size > cur[(short)0]){
             return (short)-1;
         }
-        cur[(short)0] = (short)(cur[(short)0]-size);
+        cur[(short)0] -= size;
         // fill with zeroes such that next function can be sure everything is zero
         Util.arrayFillNonAtomic(buffer, cur[(short)0], size, (byte)0x00);
         return cur[(short)0];

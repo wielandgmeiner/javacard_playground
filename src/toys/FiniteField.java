@@ -2,6 +2,9 @@
 package toys;
 
 import javacard.framework.*;
+import javacardx.crypto.Cipher;
+import javacard.security.RSAPublicKey;
+import javacard.security.KeyBuilder;
 
 /* 
  * Package: toys
@@ -9,6 +12,74 @@ import javacard.framework.*;
  * Class: FinalField
  */
 public class FiniteField{
+    static private Cipher rsaCipher;
+    static private RSAPublicKey rsaPubkey;
+    static final private byte[] FP2 = {
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFD,(byte)0xFF,(byte)0xFF,(byte)0xF8,(byte)0x5E,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x01,
+        (byte)0x00,(byte)0x00,(byte)0x07,(byte)0xA2,(byte)0x00,(byte)0x0E,(byte)0x90,(byte)0xA1
+    };
+    static final private byte[] FP = {
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFE,(byte)0xFF,(byte)0xFF,(byte)0xFC,(byte)0x2F
+    };
+    static public void init(){
+        rsaPubkey = (RSAPublicKey) KeyBuilder.buildKey(
+                KeyBuilder.TYPE_RSA_PUBLIC, KeyBuilder.LENGTH_RSA_512, false);
+        rsaCipher = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, false);
+        rsaPubkey.setModulus(FP, (short) 0x00, (short)64);
+    }
+    // exponentiation modulo FP with short exponent (like 3 or -1)
+    static public void powShortModFP(TransientStack st,
+                            byte[] a, short aOff,
+                            short exponent,
+                            byte[] out, short outOff){
+        short len = (short)32;
+        short off = st.allocate(len);
+        byte[] buf = st.buffer;
+        if(off < 0){ // failed to allocate memory
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        // set 32-byte exponent
+        if(exponent > 0){ // positive
+            Util.setShort(buf, (short)(off+30), exponent);
+        }else{ // negative
+            exponent--; // n^(FP-1)=1
+            Util.setShort(buf, (short)(off+30), (short)(-exponent));
+            subtract(Secp256k1.SECP256K1_FP, (short)0, buf, off, buf, off, (short)1);
+        }
+        powModFP(st, a, aOff, buf, off, out, outOff);
+        st.free(len);
+    }
+    // exponentiation modulo FP
+    static public void powModFP(TransientStack st, 
+                            byte[] a, short aOff,
+                            byte[] exp, short expOff, 
+                            byte[] out, short outOff){
+        short len = (short)64;
+        short off = st.allocate(len);
+        byte[] buf = st.buffer;
+        if(off < 0){ // failed to allocate memory
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        Util.arrayCopyNonAtomic(a, aOff, buf, (short)(off+32), (short)32);
+        rsaPubkey.setExponent(exp, expOff, (short)32);
+        rsaCipher.init(rsaPubkey, Cipher.MODE_ENCRYPT);
+        rsaCipher.doFinal(buf, off, (short)64, buf, off);
+        Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
+        st.free(len);
+    }
     // get random number up to max value
     // max should be large enough as we are just trying over and over
     // until we get correct number
@@ -26,8 +97,9 @@ public class FiniteField{
                         byte[] b,     short bOff, 
                         byte[] out,   short outOff, 
                         byte[] mod,   short modOff){
-        short off = st.allocate((short)32);
-        if(off < 0){
+        short len = (short)32;
+        short off = st.allocate(len);
+        if(off < 0){ // failed to allocate memory
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
         byte[] buf = st.buffer;
@@ -38,7 +110,7 @@ public class FiniteField{
         carry += isGreaterOrEqual(buf, off, mod, modOff);
         // subtract in any case and store result in output buffer
         subtract(buf, off, mod, modOff, out, outOff, carry);
-        st.free((short)32);
+        st.free(len);
     }
     // constant time comparison
     static public short isGreaterOrEqual(byte[] a, short aOff,

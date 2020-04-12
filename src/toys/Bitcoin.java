@@ -16,7 +16,8 @@ public class Bitcoin{
                            byte[] idx,  short idxOff,
                            byte[] out,  short outOff){
         // 64 hmac, 32 random tweak
-        short off = st.allocate((short)96);
+        short len = (short)96;
+        short off = st.allocate(len);
         if(off < 0){
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
@@ -62,20 +63,21 @@ public class Bitcoin{
         Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
         // set xprv flag
         out[(short)(outOff+32)] = (byte)0;
-        st.free((short)65);
+        st.free(len);
     }
     // pass xpub without prefix i.e. <chaincode><pubkey>
     static public void xpubChild(TransientStack st,
                            byte[] xpub, short xpubOff,
                            byte[] idx,  short idxOff,
-                           byte[] fullpub, short fullpubOff, // for now
                            byte[] out,  short outOff){
-        short off = st.allocate((short)65);
+        short len = (short)130;
+        short off = st.allocate(len);
+        short fullpubOff = (short)(off+65);
         if(off < 0){
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
         byte[] buf = st.buffer;
-
+        Secp256k1.uncompress(st, xpub, (short)(xpubOff+32), buf, fullpubOff);
         Crypto.hmacSha512.init(xpub, xpubOff, (short)32);
         // can't do hardened with xpubs
         if((idx[idxOff]&0xFF)>=0x80){
@@ -92,11 +94,9 @@ public class Bitcoin{
         Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
         // tweak pubkey
         Secp256k1.tweakAdd(Secp256k1.tempPrivateKey, 
-                           fullpub, fullpubOff, (short)65,
+                           buf, fullpubOff, (short)65,
                            buf, off);
-        Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+32), (short)33);
-        // set compressed byte
-        out[(short)(outOff+32)] = (byte)(0x02+(buf[(short)(off+64)] & 1));
-        st.free((short)65);
+        Secp256k1.compress(st, buf, off, out, (short)(outOff+32));
+        st.free(len);
     }
 }
