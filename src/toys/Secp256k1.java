@@ -64,11 +64,13 @@ public class Secp256k1 {
     static private KeyAgreement ecAdd;
     static private Signature sig;
     static public ECPrivateKey tempPrivateKey;
+    static private TransientStack st;
 
     /**
      * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
      */
-    static void init() {
+    static void init(TransientStack stack) {
+        st = stack;
         ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
         ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
         ecAdd = KeyAgreement.getInstance(ALG_EC_PACE_GM, false);
@@ -99,23 +101,19 @@ public class Secp256k1 {
         return kp;
     }
     // TODO: doesn't check if point is on the curve
-    static void uncompress(TransientStack st,
-                           byte[] point, short pOff,
+    static void uncompress(byte[] point, short pOff,
                            byte[] out, short outOff){
         // allocate space for y coordinate and number 7...
         short len = (short)64;
         short off = st.allocate(len);
         byte[] buf = st.buffer;
-        if(off < 0){ // failed to allocate memory
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
         // calculate x^3
-        FiniteField.powShortModFP(st, point, (short)(pOff+1), (short)3, buf, off);
+        FiniteField.powShortModFP(point, (short)(pOff+1), (short)3, buf, off);
         buf[(short)(off+63)]=0x07;
         // add 7
-        FiniteField.addMod(st, buf, off, buf, (short)(off+32), buf, off, SECP256K1_FP, (short)0);
+        FiniteField.addMod(buf, off, buf, (short)(off+32), buf, off, SECP256K1_FP, (short)0);
         // square root
-        FiniteField.powModFP(st, buf, off, SECP256K1_ROOT, (short)0, buf, (short)(off+32));
+        FiniteField.powModFP(buf, off, SECP256K1_ROOT, (short)0, buf, (short)(off+32));
         // check sign and negate if necessary
         if((point[pOff]-0x02) != (buf[(short)(off+63)]&0x01)){
             FiniteField.subtract(SECP256K1_FP, (short)0, buf, (short)(off+32), buf, (short)(off+32), (short)1);
@@ -125,15 +123,12 @@ public class Secp256k1 {
         Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+1), (short)64);
         st.free(len);
     }
-    static void compress(TransientStack st, 
-                         byte[] point, short pOff,
+    static void compress(byte[] point, short pOff,
                          byte[] out, short outOff){
         short len = (short)32;
         short off = st.allocate(len);
         byte[] buf = st.buffer;
-        if(off < 0){ // failed to allocate memory
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+
         byte sign = (byte)(0x02+(point[(short)(pOff+64)]&0x01));
         // because maybe it's the same buffer...
         Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, (short)0, (short)32);

@@ -78,6 +78,7 @@ public class MemoryCardApplet extends TeapotApplet{
     private boolean pinIsSet = false;
 
     private DataEntry secretData;
+    protected TransientStack stack;
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -89,11 +90,12 @@ public class MemoryCardApplet extends TeapotApplet{
     public MemoryCardApplet(){
         super();
 
+        stack = new TransientStack((short)1024);
         // Crypto primitives. 
         // Keep it in this order.
-        Secp256k1.init();
-        Crypto.init();
-        SecureChannel.init();
+        Secp256k1.init(stack);
+        Crypto.init(stack);
+        SecureChannel.init(stack);
 
         pin = new OwnerPIN(PIN_MAX_COUNTER, PIN_MAX_LENGTH);
 

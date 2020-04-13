@@ -45,7 +45,8 @@ public class TransientStack{
      */
     public short allocate(short size){
         if(size > available()){
-            return (short)-1;
+            free();
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
         short offset = cur[(short)0];
         cur[(short)0] = (short)(offset+size);
@@ -56,7 +57,8 @@ public class TransientStack{
      */
     public short free(short size){
         if(size > cur[(short)0]){
-            return (short)-1;
+            free();
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
         cur[(short)0] -= size;
         // fill with zeroes such that next function can be sure everything is zero

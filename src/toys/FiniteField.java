@@ -15,6 +15,7 @@ public class FiniteField{
     static private Cipher rsaCipher;
     static private RSAPublicKey rsaModFP;
     static private RSAPublicKey rsaModN;
+    static private TransientStack st;
     static final private byte[] RSA_FP = {
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
@@ -35,7 +36,8 @@ public class FiniteField{
         (byte)0xBA,(byte)0xAE,(byte)0xDC,(byte)0xE6,(byte)0xAF,(byte)0x48,(byte)0xA0,(byte)0x3B,
         (byte)0xBF,(byte)0xD2,(byte)0x5E,(byte)0x8C,(byte)0xD0,(byte)0x36,(byte)0x41,(byte)0x41
     };
-    static public void init(){
+    static public void init(TransientStack stack){
+        st = stack;
         rsaModFP = (RSAPublicKey) KeyBuilder.buildKey(
                 KeyBuilder.TYPE_RSA_PUBLIC, KeyBuilder.LENGTH_RSA_512, false);
         rsaModN = (RSAPublicKey) KeyBuilder.buildKey(
@@ -45,45 +47,37 @@ public class FiniteField{
         rsaModN.setModulus(RSA_N, (short)0, (short)64);
     }
     // exponentiation modulo FP with short exponent (like 3 or -1)
-    static public void powShortModFP(TransientStack st,
-                            byte[] a, short aOff,
-                            short exponent,
-                            byte[] out, short outOff){
-        powShortMod(st, a, aOff, exponent, out, outOff, rsaModFP, RSA_FP, (short)32);
+    static public void powShortModFP(byte[] a, short aOff,
+                                     short exponent,
+                                     byte[] out, short outOff){
+        powShortMod(a, aOff, exponent, out, outOff, rsaModFP, RSA_FP, (short)32);
     }
     // exponentiation modulo FP
-    static public void powModFP(TransientStack st, 
-                            byte[] a, short aOff,
-                            byte[] exp, short expOff, 
-                            byte[] out, short outOff){
-        powMod(st, a, aOff, exp, expOff, out, outOff, rsaModFP);
+    static public void powModFP(byte[] a, short aOff,
+                                byte[] exp, short expOff, 
+                                byte[] out, short outOff){
+        powMod(a, aOff, exp, expOff, out, outOff, rsaModFP);
     }
     // exponentiation modulo N with short exponent (like 3 or -1)
-    static public void powShortModN(TransientStack st,
-                            byte[] a, short aOff,
-                            short exponent,
-                            byte[] out, short outOff){
-        powShortMod(st, a, aOff, exponent, out, outOff, rsaModN, RSA_N, (short)32);
+    static public void powShortModN(byte[] a, short aOff,
+                                    short exponent,
+                                    byte[] out, short outOff){
+        powShortMod(a, aOff, exponent, out, outOff, rsaModN, RSA_N, (short)32);
     }
     // exponentiation modulo N
-    static public void powModN(TransientStack st, 
-                            byte[] a, short aOff,
-                            byte[] exp, short expOff, 
-                            byte[] out, short outOff){
-        powMod(st, a, aOff, exp, expOff, out, outOff, rsaModN);
+    static public void powModN(byte[] a, short aOff,
+                               byte[] exp, short expOff, 
+                               byte[] out, short outOff){
+        powMod(a, aOff, exp, expOff, out, outOff, rsaModN);
     }
-    static public void powShortMod(TransientStack st,
-                            byte[] a, short aOff,
-                            short exponent,
-                            byte[] out, short outOff, 
-                            RSAPublicKey rsaKey,
-                            byte[] mod, short modOff){    
+    static public void powShortMod(byte[] a, short aOff,
+                                   short exponent,
+                                   byte[] out, short outOff, 
+                                   RSAPublicKey rsaKey,
+                                   byte[] mod, short modOff){    
         short len = (short)32;
         short off = st.allocate(len);
         byte[] buf = st.buffer;
-        if(off < 0){ // failed to allocate memory
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
         // set 32-byte exponent
         if(exponent > 0){ // positive
             Util.setShort(buf, (short)(off+30), exponent);
@@ -92,21 +86,18 @@ public class FiniteField{
             Util.setShort(buf, (short)(off+30), (short)(-exponent));
             subtract(mod, modOff, buf, off, buf, off, (short)1);
         }
-        powMod(st, a, aOff, buf, off, out, outOff, rsaKey);
+        powMod(a, aOff, buf, off, out, outOff, rsaKey);
         st.free(len);
     }
     // exponentiation modulo 
-    static public void powMod(TransientStack st, 
-                            byte[] a, short aOff,
-                            byte[] exp, short expOff, 
-                            byte[] out, short outOff,
-                            RSAPublicKey rsaKey){
+    static public void powMod(byte[] a, short aOff,
+                              byte[] exp, short expOff, 
+                              byte[] out, short outOff,
+                              RSAPublicKey rsaKey){
         short len = (short)64;
         short off = st.allocate(len);
         byte[] buf = st.buffer;
-        if(off < 0){ // failed to allocate memory
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+
         Util.arrayCopyNonAtomic(a, aOff, buf, (short)(off+32), (short)32);
         rsaKey.setExponent(exp, expOff, (short)32);
         rsaCipher.init(rsaKey, Cipher.MODE_ENCRYPT);
@@ -126,16 +117,12 @@ public class FiniteField{
     }
     // constant time modulo addition
     // can tweak in place
-    static public void addMod(TransientStack st,
-                        byte[] a,     short aOff, 
-                        byte[] b,     short bOff, 
-                        byte[] out,   short outOff, 
-                        byte[] mod,   short modOff){
+    static public void addMod(byte[] a,     short aOff, 
+                              byte[] b,     short bOff, 
+                              byte[] out,   short outOff, 
+                              byte[] mod,   short modOff){
         short len = (short)32;
         short off = st.allocate(len);
-        if(off < 0){ // failed to allocate memory
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
         byte[] buf = st.buffer;
         // addition with carry
         short carry = add(a, aOff, b, bOff, buf, off);
@@ -148,7 +135,7 @@ public class FiniteField{
     }
     // constant time comparison
     static public short isGreaterOrEqual(byte[] a, short aOff,
-                                   byte[] b, short bOff){
+                                         byte[] b, short bOff){
         // if a is smaller than b, a-b will be negative
         // and we will get carry of -1
         short carry = 0;
@@ -164,8 +151,8 @@ public class FiniteField{
     // use temp buffer for example
     // TODO: make private. Create a public function that uses stack
     static public short add(byte[] a, short aOff,
-                      byte[] b, short bOff,
-                      byte[] out, short outOff){
+                            byte[] b, short bOff,
+                            byte[] out, short outOff){
         short carry = 0;
         for(short i=31; i>=0; i--){
             carry = (short)((short)(a[(short)(aOff+i)]&0xFF)+(short)(b[(short)(bOff+i)]&0xFF)+carry);
@@ -181,9 +168,9 @@ public class FiniteField{
     // TODO: make private. Create a public function that uses stack
     // TODO: implement public subtractMod function
     static public short subtract(byte[] a, short aOff, 
-                     byte[] b, short bOff,
-                     byte[] out, short outOff, 
-                     short multiplier){
+                                 byte[] b, short bOff,
+                                 byte[] out, short outOff, 
+                                 short multiplier){
         short carry = 0;
         for(short i=31; i>=0; i--){
             carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)*multiplier+carry);

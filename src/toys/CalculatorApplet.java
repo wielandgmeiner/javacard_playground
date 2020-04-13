@@ -51,11 +51,12 @@ public class CalculatorApplet extends Applet{
     }
 
     public CalculatorApplet(){
-        Secp256k1.init();
-        Crypto.init();
-        FiniteField.init();
         // allocate some memory in RAM for intermediate calculations
         stack = new TransientStack((short)1024);
+        Secp256k1.init(stack);
+        Crypto.init(stack);
+        FiniteField.init(stack);
+        Bitcoin.init(stack);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -126,7 +127,7 @@ public class CalculatorApplet extends Applet{
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.addMod(stack, buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_FP, (short)0);
+            FiniteField.addMod(buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_FP, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_ADDMOD_N:
@@ -134,7 +135,7 @@ public class CalculatorApplet extends Applet{
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.addMod(stack, buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_R, (short)0);
+            FiniteField.addMod(buf, (short)(offset+1), buf, (short)(offset+34), buf, (short)0, Secp256k1.SECP256K1_R, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_ECC_TWEAK_ADD:
@@ -152,9 +153,6 @@ public class CalculatorApplet extends Applet{
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             short off = stack.allocate((short)32);
-            if(off < 0){ // failed to allocate
-                ISOException.throwIt(ISO7816.SW_UNKNOWN);
-            }
             // should be zero anyways, but just in case
             Util.arrayFillNonAtomic(stack.buffer, off, (short)32, (byte)0);
             stack.buffer[(short)(off+31)] = (byte)1;
@@ -176,7 +174,7 @@ public class CalculatorApplet extends Applet{
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             // TODO: check args len
-            Bitcoin.xprvChild(stack, buf, (short)(offset+1), buf, (short)(offset+67), buf, (short)0);
+            Bitcoin.xprvChild(buf, (short)(offset+1), buf, (short)(offset+67), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
             break;
         // <xpub><index><uncompressed pubkey>
@@ -185,7 +183,7 @@ public class CalculatorApplet extends Applet{
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             // TODO: check args len
-            Bitcoin.xpubChild(stack, 
+            Bitcoin.xpubChild(
                       buf, (short)(offset+1), 
                       buf, (short)(offset+67), 
                       buf, (short)0);
@@ -196,7 +194,7 @@ public class CalculatorApplet extends Applet{
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             short iterations = Util.getShort(buf, (short)(offset+1));
-            Crypto.pbkdf2(stack, // for temporary allocations
+            Crypto.pbkdf2(
                    buf, (short)(offset+4), buf[(short)(offset+3)], 
                    buf, (short)(offset+5+buf[(short)(offset+3)]), buf[(short)(offset+4+buf[(short)(offset+3)])], 
                    iterations,
@@ -207,56 +205,56 @@ public class CalculatorApplet extends Applet{
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)2, buf, (short)0);
+            FiniteField.powShortModFP(buf, (short)(offset+1), (short)2, buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_CUBE_FP:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)3, buf, (short)0);
+            FiniteField.powShortModFP(buf, (short)(offset+1), (short)3, buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_INVERSE_FP:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)(-1), buf, (short)0);
+            FiniteField.powShortModFP(buf, (short)(offset+1), (short)(-1), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_SQUARE_N:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.powShortModN(stack, buf, (short)(offset+1), (short)2, buf, (short)0);
+            FiniteField.powShortModN(buf, (short)(offset+1), (short)2, buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_CUBE_N:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.powShortModN(stack, buf, (short)(offset+1), (short)3, buf, (short)0);
+            FiniteField.powShortModN(buf, (short)(offset+1), (short)3, buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_INVERSE_N:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            FiniteField.powShortModN(stack, buf, (short)(offset+1), (short)(-1), buf, (short)0);
+            FiniteField.powShortModN(buf, (short)(offset+1), (short)(-1), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_COMPRESS:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            Secp256k1.compress(stack, buf, (short)(offset+1), buf, (short)0);
+            Secp256k1.compress(buf, (short)(offset+1), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)33);
             break;
         case INS_UNCOMPRESS:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            Secp256k1.uncompress(stack, buf, (short)(offset+1), buf, (short)0);
+            Secp256k1.uncompress(buf, (short)(offset+1), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
             break;
         default:

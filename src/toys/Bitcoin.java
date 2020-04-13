@@ -10,20 +10,19 @@ import javacard.security.*;
  * Class: Bitcoin
  */
 public class Bitcoin{
+    static private TransientStack st;
+    static public void init(TransientStack stack){
+        st = stack;
+    }
     // TODO: refactor xprvChild and xpubChild to the same function
     //       - use arr[33] to detect if it's xpub or xprv
-    
     // pass xprv without prefix i.e. <chaincode>0x00<prv>
-    static public void xprvChild(TransientStack st,
-                           byte[] xprv, short xprvOff,
-                           byte[] idx,  short idxOff,
-                           byte[] out,  short outOff){
+    static public void xprvChild(byte[] xprv, short xprvOff,
+                                 byte[] idx,  short idxOff,
+                                 byte[] out,  short outOff){
         // 64 hmac, 32 random tweak
         short len = (short)96;
         short off = st.allocate(len);
-        if(off < 0){
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
         byte[] buf = st.buffer;
 
         Crypto.hmacSha512.init(xprv, xprvOff, (short)32);
@@ -43,12 +42,12 @@ public class Bitcoin{
         FiniteField.getRandomElement(Secp256k1.SECP256K1_R, (short)0,
                                      buf, (short)(off+64));
         // add it to tweak
-        FiniteField.addMod(st, buf, (short)(off+64), 
+        FiniteField.addMod(buf, (short)(off+64), 
                buf, off,
                buf, off,
                Secp256k1.SECP256K1_R, (short)0);
         // tweak private key modulo N
-        FiniteField.addMod(st, xprv, (short)(xprvOff+33), 
+        FiniteField.addMod(xprv, (short)(xprvOff+33), 
                buf, off,
                buf, off,
                Secp256k1.SECP256K1_R, (short)0);
@@ -58,7 +57,7 @@ public class Bitcoin{
                              buf, (short)(off+64),
                              (short)1);
         // add negative of the random
-        FiniteField.addMod(st, buf, (short)(off+64), 
+        FiniteField.addMod(buf, (short)(off+64), 
                buf, off,
                out, (short)(outOff+33),
                Secp256k1.SECP256K1_R, (short)0);
@@ -69,18 +68,15 @@ public class Bitcoin{
         st.free(len);
     }
     // pass xpub without prefix i.e. <chaincode><pubkey>
-    static public void xpubChild(TransientStack st,
-                           byte[] xpub, short xpubOff,
-                           byte[] idx,  short idxOff,
-                           byte[] out,  short outOff){
+    static public void xpubChild(byte[] xpub, short xpubOff,
+                                 byte[] idx,  short idxOff,
+                                 byte[] out,  short outOff){
         short len = (short)130;
         short off = st.allocate(len);
         short fullpubOff = (short)(off+65);
-        if(off < 0){
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
         byte[] buf = st.buffer;
-        Secp256k1.uncompress(st, xpub, (short)(xpubOff+32), buf, fullpubOff);
+
+        Secp256k1.uncompress(xpub, (short)(xpubOff+32), buf, fullpubOff);
         Crypto.hmacSha512.init(xpub, xpubOff, (short)32);
         // can't do hardened with xpubs
         if((idx[idxOff]&0xFF)>=0x80){
@@ -99,7 +95,7 @@ public class Bitcoin{
         Secp256k1.tweakAdd(Secp256k1.tempPrivateKey, 
                            buf, fullpubOff, (short)65,
                            buf, off);
-        Secp256k1.compress(st, buf, off, out, (short)(outOff+32));
+        Secp256k1.compress(buf, off, out, (short)(outOff+32));
         st.free(len);
     }
 }

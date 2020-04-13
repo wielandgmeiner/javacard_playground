@@ -25,8 +25,10 @@ public class Crypto{
     static public HMACDigest hmacSha256;
     static public HMACDigest hmacSha512;
     static public Cipher cipher;
+    static private TransientStack st;
 
-    static public void init(){
+    static public void init(TransientStack stack){
+        st = stack;
         random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
         sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
@@ -34,31 +36,26 @@ public class Crypto{
         hmacSha512 = new HMACDigest(sha512, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
         cipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
     }
-    static public void pbkdf2(TransientStack st,
-                        byte[] pass, short pOff, short pLen,
-                        byte[] salt, short sOff, short sLen,
-                        short iterations,
-                        byte[] out, short outOff){
+    static public void pbkdf2(byte[] pass, short pOff, short pLen,
+                              byte[] salt, short sOff, short sLen,
+                              short iterations,
+                              byte[] out, short outOff){
         // put into RAM, it will slightly speed up calculations
         short blockSize = HMACDigest.ALG_SHA_512_BLOCK_SIZE;
         byte ipad = HMACDigest.IPAD;
         byte opad = HMACDigest.OPAD;
-        MessageDigest hash = Crypto.sha512;
+        MessageDigest hash = sha512;
         hash.reset();
         // get temp buffer for ikey, okey and U
         short len = (short)(blockSize*2+64);
         short ikeyOff = st.allocate(len);
-        if(ikeyOff < 0){
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
         short okeyOff = (short)(ikeyOff+blockSize);
         short dataOff = (short)(okeyOff+blockSize);
         byte[] buf = st.buffer;
 
         if(pLen > blockSize) {
-            hash.doFinal(pass, pOff, pLen, st.buffer, ikeyOff);
+            hash.doFinal(pass, pOff, pLen, buf, ikeyOff);
         }else{
-            Util.arrayFillNonAtomic(buf, ikeyOff, blockSize, (byte)0);
             Util.arrayCopyNonAtomic(pass, pOff, buf, ikeyOff, pLen);
         }
         Util.arrayCopyNonAtomic(buf, ikeyOff, buf, okeyOff, blockSize);
