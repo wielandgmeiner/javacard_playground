@@ -10,6 +10,9 @@ import javacard.security.*;
  * Class: Bitcoin
  */
 public class Bitcoin{
+    // TODO: refactor xprvChild and xpubChild to the same function
+    //       - use arr[33] to detect if it's xpub or xprv
+    
     // pass xprv without prefix i.e. <chaincode>0x00<prv>
     static public void xprvChild(TransientStack st,
                            byte[] xprv, short xprvOff,

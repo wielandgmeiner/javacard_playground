@@ -13,18 +13,9 @@ import javacard.security.KeyBuilder;
  */
 public class FiniteField{
     static private Cipher rsaCipher;
-    static private RSAPublicKey rsaPubkey;
-    static final private byte[] FP2 = {
-        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
-        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
-        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
-        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFD,(byte)0xFF,(byte)0xFF,(byte)0xF8,(byte)0x5E,
-        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
-        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
-        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x01,
-        (byte)0x00,(byte)0x00,(byte)0x07,(byte)0xA2,(byte)0x00,(byte)0x0E,(byte)0x90,(byte)0xA1
-    };
-    static final private byte[] FP = {
+    static private RSAPublicKey rsaModFP;
+    static private RSAPublicKey rsaModN;
+    static final private byte[] RSA_FP = {
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
@@ -34,17 +25,59 @@ public class FiniteField{
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFE,(byte)0xFF,(byte)0xFF,(byte)0xFC,(byte)0x2F
     };
+    static final private byte[] RSA_N = {
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
+        (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFE,
+        (byte)0xBA,(byte)0xAE,(byte)0xDC,(byte)0xE6,(byte)0xAF,(byte)0x48,(byte)0xA0,(byte)0x3B,
+        (byte)0xBF,(byte)0xD2,(byte)0x5E,(byte)0x8C,(byte)0xD0,(byte)0x36,(byte)0x41,(byte)0x41
+    };
     static public void init(){
-        rsaPubkey = (RSAPublicKey) KeyBuilder.buildKey(
+        rsaModFP = (RSAPublicKey) KeyBuilder.buildKey(
+                KeyBuilder.TYPE_RSA_PUBLIC, KeyBuilder.LENGTH_RSA_512, false);
+        rsaModN = (RSAPublicKey) KeyBuilder.buildKey(
                 KeyBuilder.TYPE_RSA_PUBLIC, KeyBuilder.LENGTH_RSA_512, false);
         rsaCipher = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, false);
-        rsaPubkey.setModulus(FP, (short) 0x00, (short)64);
+        rsaModFP.setModulus(RSA_FP, (short)0, (short)64);
+        rsaModN.setModulus(RSA_N, (short)0, (short)64);
     }
     // exponentiation modulo FP with short exponent (like 3 or -1)
     static public void powShortModFP(TransientStack st,
                             byte[] a, short aOff,
                             short exponent,
                             byte[] out, short outOff){
+        powShortMod(st, a, aOff, exponent, out, outOff, rsaModFP, RSA_FP, (short)32);
+    }
+    // exponentiation modulo FP
+    static public void powModFP(TransientStack st, 
+                            byte[] a, short aOff,
+                            byte[] exp, short expOff, 
+                            byte[] out, short outOff){
+        powMod(st, a, aOff, exp, expOff, out, outOff, rsaModFP);
+    }
+    // exponentiation modulo N with short exponent (like 3 or -1)
+    static public void powShortModN(TransientStack st,
+                            byte[] a, short aOff,
+                            short exponent,
+                            byte[] out, short outOff){
+        powShortMod(st, a, aOff, exponent, out, outOff, rsaModN, RSA_N, (short)32);
+    }
+    // exponentiation modulo N
+    static public void powModN(TransientStack st, 
+                            byte[] a, short aOff,
+                            byte[] exp, short expOff, 
+                            byte[] out, short outOff){
+        powMod(st, a, aOff, exp, expOff, out, outOff, rsaModN);
+    }
+    static public void powShortMod(TransientStack st,
+                            byte[] a, short aOff,
+                            short exponent,
+                            byte[] out, short outOff, 
+                            RSAPublicKey rsaKey,
+                            byte[] mod, short modOff){    
         short len = (short)32;
         short off = st.allocate(len);
         byte[] buf = st.buffer;
@@ -55,18 +88,19 @@ public class FiniteField{
         if(exponent > 0){ // positive
             Util.setShort(buf, (short)(off+30), exponent);
         }else{ // negative
-            exponent--; // n^(FP-1)=1
+            exponent--; // n^(p-1)=1
             Util.setShort(buf, (short)(off+30), (short)(-exponent));
-            subtract(Secp256k1.SECP256K1_FP, (short)0, buf, off, buf, off, (short)1);
+            subtract(mod, modOff, buf, off, buf, off, (short)1);
         }
-        powModFP(st, a, aOff, buf, off, out, outOff);
+        powMod(st, a, aOff, buf, off, out, outOff, rsaKey);
         st.free(len);
     }
-    // exponentiation modulo FP
-    static public void powModFP(TransientStack st, 
+    // exponentiation modulo 
+    static public void powMod(TransientStack st, 
                             byte[] a, short aOff,
                             byte[] exp, short expOff, 
-                            byte[] out, short outOff){
+                            byte[] out, short outOff,
+                            RSAPublicKey rsaKey){
         short len = (short)64;
         short off = st.allocate(len);
         byte[] buf = st.buffer;
@@ -74,8 +108,8 @@ public class FiniteField{
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
         Util.arrayCopyNonAtomic(a, aOff, buf, (short)(off+32), (short)32);
-        rsaPubkey.setExponent(exp, expOff, (short)32);
-        rsaCipher.init(rsaPubkey, Cipher.MODE_ENCRYPT);
+        rsaKey.setExponent(exp, expOff, (short)32);
+        rsaCipher.init(rsaKey, Cipher.MODE_ENCRYPT);
         rsaCipher.doFinal(buf, off, (short)64, buf, off);
         Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
         st.free(len);
@@ -128,6 +162,7 @@ public class FiniteField{
     // WARNING: can't do subtraction in place with different offsets
     // output buffer should be a different one, 
     // use temp buffer for example
+    // TODO: make private. Create a public function that uses stack
     static public short add(byte[] a, short aOff,
                       byte[] b, short bOff,
                       byte[] out, short outOff){
@@ -143,6 +178,8 @@ public class FiniteField{
     // WARNING: can't do subtraction in place with different offsets
     // output buffer should be a different one, 
     // use temp buffer for example
+    // TODO: make private. Create a public function that uses stack
+    // TODO: implement public subtractMod function
     static public short subtract(byte[] a, short aOff, 
                      byte[] b, short bOff,
                      byte[] out, short outOff, 
@@ -155,4 +192,6 @@ public class FiniteField{
         }
         return carry;
     }
+    // TODO: implement mulModFP & mulModN
+    // hint: 4*a*b = (a+b)^2-(a-b)^2
 }

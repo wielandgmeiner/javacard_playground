@@ -30,12 +30,15 @@ public class CalculatorApplet extends Applet{
     private static final byte INS_XPRV_CHILD           = (byte)0xA9;
     private static final byte INS_XPUB_CHILD           = (byte)0xAA;
     // abusing RSA engine
-    private static final byte INS_SQUARE               = (byte)0xAB;
-    private static final byte INS_CUBE                 = (byte)0xAC;
-    private static final byte INS_INVERSE              = (byte)0xAD;
+    private static final byte INS_SQUARE_FP            = (byte)0xAB;
+    private static final byte INS_CUBE_FP              = (byte)0xAC;
+    private static final byte INS_INVERSE_FP           = (byte)0xAD;
+    private static final byte INS_SQUARE_N             = (byte)0xAE;
+    private static final byte INS_CUBE_N               = (byte)0xAF;
+    private static final byte INS_INVERSE_N            = (byte)0xB0;
     // ecc again...
-    private static final byte INS_COMPRESS             = (byte)0xAE;
-    private static final byte INS_UNCOMPRESS           = (byte)0xAF;
+    private static final byte INS_COMPRESS             = (byte)0xB1;
+    private static final byte INS_UNCOMPRESS           = (byte)0xB2;
 
     private TransientStack stack;
 
@@ -200,25 +203,46 @@ public class CalculatorApplet extends Applet{
                    buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)64);
             break;
-        case INS_SQUARE:
+        case INS_SQUARE_FP:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)2, buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
-        case INS_CUBE:
+        case INS_CUBE_FP:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)3, buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
-        case INS_INVERSE:
+        case INS_INVERSE_FP:
             if(numElements != 1){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             FiniteField.powShortModFP(stack, buf, (short)(offset+1), (short)(-1), buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)32);
+            break;
+        case INS_SQUARE_N:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            FiniteField.powShortModN(stack, buf, (short)(offset+1), (short)2, buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)32);
+            break;
+        case INS_CUBE_N:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            FiniteField.powShortModN(stack, buf, (short)(offset+1), (short)3, buf, (short)0);
+            apdu.setOutgoingAndSend((short)0, (short)32);
+            break;
+        case INS_INVERSE_N:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            FiniteField.powShortModN(stack, buf, (short)(offset+1), (short)(-1), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)32);
             break;
         case INS_COMPRESS:
