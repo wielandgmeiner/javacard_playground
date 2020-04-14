@@ -7,9 +7,10 @@ Work in progress, documentation for classes and applets is in the [`doc/`](./doc
 ## Applets
 
 - [`Teapot`](./doc/Teapot.md) - a very simple "Hello world" class that doesn't use any PIN protection or secure communication. It can only store up to `255` bytes of data and give it back on request. Perfect for testing communication with the card.
-- [`MemoryCard`](./doc/MemoryCard.md) - adds PIN protection and secure communication. All functionality of the `Teapot` is still there.
+- [`MemoryCard`](./doc/MemoryCard.md) - adds PIN protection and secure communication.
 - [`Calculator`](./doc/Calculator.md) - some ariphmetics on the card - bip32, hmac, inversion, point addition.
-- [`BlindOracle`](./doc/BlindOracle.md) - allows bip32 key derivation so the key never leaves the card. Includes nonce blinding protocol to minimize trust in proprietary stuff deployed on the card. All functionality of the `MemoryCard` is still there.
+- [`BlindOracle`](./doc/BlindOracle.md) - allows bip32 key derivation so the key never leaves the card. Includes nonce blinding protocol to minimize trust in proprietary stuff deployed on the card.
+- [`SingleUseKey`](./doc/SingleUseKey.md) - generates a temporary key on the card that can be used only once to sign a single hash. After that the key is deleted. Can be used for proposals like Bob's and Brian's.
 - [`HardwareSpaghettiMonster`](./doc/HardwareSpaghettiMonster.md) - should add custom policies to the card.
 
 For `Teapot` and `MemoryCard` any JavaCard should work. For `BlindOracle` or `HardwareSpaghettiMonster` [NXP J3H145](https://www.smartcardfocus.com/shop/ilp/id~879/nxp-j3h145-dual-interface-java-card-144k/p/index.shtml) should work fine.
@@ -105,6 +106,10 @@ Taisys SIMoME Vault
 But sometimes we have to... 
 Here we have modulo addition for bip32 key derivation, this one is critical.
 For public key uncompression we can use fast functions as no secrets are involved there.
+
+For finite field ariphmetics we are abusing `RSA` encryption coprocessor where we set modulo to `FP` or `N` of `secp256k1` curve and public key to the exponent we need.
+
+Point addition is implemented using `ALG_EC_PACE_GM`, but can be also done manually with a few simple equations over `FP`.
 
 ## Rules for crypto
 

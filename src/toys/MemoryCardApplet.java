@@ -60,7 +60,6 @@ public class MemoryCardApplet extends SecureApplet{
             return sendError(ERR_INVALID_CMD, buf, offset);
         }
     }
-    // respond to everything with OK
     protected short processPlainMessage(byte[] msg, short msgOff, short msgLen){
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         return (short)0;
