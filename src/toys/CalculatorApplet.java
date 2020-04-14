@@ -40,7 +40,7 @@ public class CalculatorApplet extends Applet{
     private static final byte INS_COMPRESS             = (byte)0xB1;
     private static final byte INS_UNCOMPRESS           = (byte)0xB2;
 
-    private TransientStack stack;
+    private TransientHeap heap;
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -52,11 +52,11 @@ public class CalculatorApplet extends Applet{
 
     public CalculatorApplet(){
         // allocate some memory in RAM for intermediate calculations
-        stack = new TransientStack((short)1024);
-        Secp256k1.init(stack);
-        Crypto.init(stack);
-        FiniteField.init(stack);
-        Bitcoin.init(stack);
+        heap = new TransientHeap((short)1024);
+        Secp256k1.init(heap);
+        Crypto.init(heap);
+        FiniteField.init(heap);
+        Bitcoin.init(heap);
     }
     // Process the command APDU, 
     // All APDUs are received by the JCRE and preprocessed. 
@@ -86,8 +86,8 @@ public class CalculatorApplet extends Applet{
         // Dispatch INS in APDU.
         short offset = (short)ISO7816.OFFSET_CDATA;
 
-        // clean up the stack before we start
-        stack.free();
+        // clean up the heap before we start
+        heap.free();
 
         switch (buf[ISO7816.OFFSET_INS]){
         case INS_SHA256:
@@ -152,13 +152,13 @@ public class CalculatorApplet extends Applet{
             if(numElements != 2){
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            short off = stack.allocate((short)32);
+            short off = heap.allocate((short)32);
             // should be zero anyways, but just in case
-            Util.arrayFillNonAtomic(stack.buffer, off, (short)32, (byte)0);
-            stack.buffer[(short)(off+31)] = (byte)1;
-            Secp256k1.tempPrivateKey.setS(stack.buffer, off, (short)32);
+            Util.arrayFillNonAtomic(heap.buffer, off, (short)32, (byte)0);
+            heap.buffer[(short)(off+31)] = (byte)1;
+            Secp256k1.tempPrivateKey.setS(heap.buffer, off, (short)32);
             // redeem the memory
-            stack.free((short)32);
+            heap.free((short)32);
             // set G to our point
             Secp256k1.tempPrivateKey.setG(buf, (short)(offset+1), (short)65);
             Secp256k1.tweakAdd(Secp256k1.tempPrivateKey, 

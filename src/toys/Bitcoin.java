@@ -10,9 +10,9 @@ import javacard.security.*;
  * Class: Bitcoin
  */
 public class Bitcoin{
-    static private TransientStack st;
-    static public void init(TransientStack stack){
-        st = stack;
+    static private TransientHeap heap;
+    static public void init(TransientHeap hp){
+        heap = hp;
     }
     // TODO: refactor xprvChild and xpubChild to the same function
     //       - use arr[33] to detect if it's xpub or xprv
@@ -22,8 +22,8 @@ public class Bitcoin{
                                  byte[] out,  short outOff){
         // 64 hmac, 32 random tweak
         short len = (short)96;
-        short off = st.allocate(len);
-        byte[] buf = st.buffer;
+        short off = heap.allocate(len);
+        byte[] buf = heap.buffer;
 
         Crypto.hmacSha512.init(xprv, xprvOff, (short)32);
         if((idx[idxOff]&0xFF)>=0x80){
@@ -65,16 +65,16 @@ public class Bitcoin{
         Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
         // set xprv flag
         out[(short)(outOff+32)] = (byte)0;
-        st.free(len);
+        heap.free(len);
     }
     // pass xpub without prefix i.e. <chaincode><pubkey>
     static public void xpubChild(byte[] xpub, short xpubOff,
                                  byte[] idx,  short idxOff,
                                  byte[] out,  short outOff){
         short len = (short)130;
-        short off = st.allocate(len);
+        short off = heap.allocate(len);
         short fullpubOff = (short)(off+65);
-        byte[] buf = st.buffer;
+        byte[] buf = heap.buffer;
 
         Secp256k1.uncompress(xpub, (short)(xpubOff+32), buf, fullpubOff);
         Crypto.hmacSha512.init(xpub, xpubOff, (short)32);
@@ -96,6 +96,6 @@ public class Bitcoin{
                            buf, fullpubOff, (short)65,
                            buf, off);
         Secp256k1.compress(buf, off, out, (short)(outOff+32));
-        st.free(len);
+        heap.free(len);
     }
 }

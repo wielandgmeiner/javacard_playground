@@ -27,10 +27,10 @@ public class SecureChannel{
     static private AESKey cardKey;
     static private AESKey hostKey;
     static private byte iv[];
-    static private TransientStack st;
+    static protected TransientHeap heap;
 
-    static public void init(TransientStack stack){
-        st = stack;
+    static public void init(TransientHeap hp){
+        heap = hp;
         // generate random secret key for secure communication
         staticKeyPair = Secp256k1.newKeyPair();
         staticKeyPair.genKeyPair();
@@ -71,7 +71,7 @@ public class SecureChannel{
     static public void establishSharedSecret(byte[] buf, short offset, 
                                              boolean useEphimerial){
         short len = (short)32;
-        short off = st.allocate(len);
+        short off = heap.allocate(len);
         // first we wipe what we already have
         closeChannel();
         // now we establish new shared secret
@@ -83,8 +83,8 @@ public class SecureChannel{
             if(sessionIsTransient){
                 Secp256k1.setCommonCurveParameters(sessionPrivateKey);
             }
-            Crypto.random.generateData(st.buffer, off, (short)32);
-            sessionPrivateKey.setS(st.buffer, off, (short)32);
+            Crypto.random.generateData(heap.buffer, off, (short)32);
+            sessionPrivateKey.setS(heap.buffer, off, (short)32);
             Secp256k1.ecdh( sessionPrivateKey, 
                             buf, offset, (short)65, 
                             sharedSecret, (short)0);
@@ -95,16 +95,16 @@ public class SecureChannel{
         }
         Crypto.sha256.reset();
         Crypto.sha256.update(CARD_PREFIX, (short)0, (short)CARD_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, st.buffer, off);
-        cardKey.setKey(st.buffer, off);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, heap.buffer, off);
+        cardKey.setKey(heap.buffer, off);
 
         Crypto.sha256.reset();
         Crypto.sha256.update(HOST_PREFIX, (short)0, (short)HOST_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, st.buffer, off);
-        hostKey.setKey(st.buffer, off);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, heap.buffer, off);
+        hostKey.setKey(heap.buffer, off);
         // now we can set iv counter to zero
         Util.arrayFillNonAtomic(iv, (short)0, (short)16, (byte)0);
-        st.free(len);
+        heap.free(len);
     }
     static public short serializeSessionPubkey(byte[] buf, short offset){
         // pubkey is just ECDH of private key with G
@@ -116,12 +116,12 @@ public class SecureChannel{
     static public short authenticateData(byte[] data, short dataOffset, short dataLen, 
                                          byte[] out, short outOffset){
         short len = (short)32;
-        short off = st.allocate(len);
+        short off = heap.allocate(len);
 
-        cardKey.getKey(st.buffer, off);
-        Crypto.hmacSha256.init(st.buffer, off, (short)32);
+        cardKey.getKey(heap.buffer, off);
+        Crypto.hmacSha256.init(heap.buffer, off, (short)32);
         Crypto.hmacSha256.doFinal(data, dataOffset, dataLen, out, outOffset);
-        st.free(len);
+        heap.free(len);
         return (short)32;
     }
     // Signs arbitrary data with unique keypair
@@ -134,25 +134,25 @@ public class SecureChannel{
     static public short signData(byte[] data, short dataOffset, short dataLen, 
                                  byte[] out, short outOffset){
         short len = (short)32;
-        short off = st.allocate(len);
+        short off = heap.allocate(len);
 
         Crypto.sha256.reset();
-        Crypto.sha256.doFinal(data, dataOffset, dataLen, st.buffer, off);
-        short sigLen = Secp256k1.sign((ECPrivateKey)staticKeyPair.getPrivate(), st.buffer, off, out, outOffset);
-        st.free(len);
+        Crypto.sha256.doFinal(data, dataOffset, dataLen, heap.buffer, off);
+        short sigLen = Secp256k1.sign((ECPrivateKey)staticKeyPair.getPrivate(), heap.buffer, off, out, outOffset);
+        heap.free(len);
         return sigLen;
     }
     static public short getSharedHash(byte[] buf, short offset){
         // sending sha256 of the hostKey + cardKey
         short len = (short)32;
-        short off = st.allocate(len);
+        short off = heap.allocate(len);
 
         Crypto.sha256.reset();
-        hostKey.getKey(st.buffer, off);
-        Crypto.sha256.update(st.buffer, off, (short)32);
-        cardKey.getKey(st.buffer, off);
-        Crypto.sha256.doFinal(st.buffer, off, (short)32, buf, offset);
-        st.free(len);
+        hostKey.getKey(heap.buffer, off);
+        Crypto.sha256.update(heap.buffer, off, (short)32);
+        cardKey.getKey(heap.buffer, off);
+        Crypto.sha256.doFinal(heap.buffer, off, (short)32, buf, offset);
+        heap.free(len);
         return (short)32;
     }
     static public short decryptMessage(byte[] ct, short ctOffset, short ctLen, 
@@ -163,7 +163,7 @@ public class SecureChannel{
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
         short len = (short)255;
-        short off = st.allocate(len);
+        short off = heap.allocate(len);
         short hmacLen = (short)32;
         // max size => drop last byte
         if(ctLen == (short)255){
@@ -171,21 +171,21 @@ public class SecureChannel{
         }
         short dataLen = (short)(ctLen-hmacLen);
         // calculate expected hmac
-        hostKey.getKey(st.buffer, off);
-        Crypto.hmacSha256.init(st.buffer, off, (short)32);
+        hostKey.getKey(heap.buffer, off);
+        Crypto.hmacSha256.init(heap.buffer, off, (short)32);
         Crypto.hmacSha256.update(iv, (short)0, (short)16);
-        Crypto.hmacSha256.doFinal(ct, ctOffset, dataLen, st.buffer, off);
+        Crypto.hmacSha256.doFinal(ct, ctOffset, dataLen, heap.buffer, off);
         // check hmac is correct
-        if(Util.arrayCompare(st.buffer, off, ct, (short)(ctOffset+dataLen),hmacLen)!=(byte)0){
+        if(Util.arrayCompare(heap.buffer, off, ct, (short)(ctOffset+dataLen),hmacLen)!=(byte)0){
             closeChannel();
-            st.free(len);
+            heap.free(len);
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
         // decrypt using current iv value
         Crypto.cipher.init(hostKey, Cipher.MODE_DECRYPT, iv, (short)0, (short)16);
-        short plainLen = Crypto.cipher.doFinal(ct, ctOffset, dataLen, st.buffer, off);
-        Util.arrayCopyNonAtomic(st.buffer, off, out, outOffset, plainLen);
-        st.free(len);
+        short plainLen = Crypto.cipher.doFinal(ct, ctOffset, dataLen, heap.buffer, off);
+        Util.arrayCopyNonAtomic(heap.buffer, off, out, outOffset, plainLen);
+        heap.free(len);
         return plainLen;
     }
     static public short encryptMessage(byte[] data, short offset, short dataLen, 
@@ -195,45 +195,33 @@ public class SecureChannel{
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
         short len = (short)255;
-        short off = st.allocate(len);
+        short off = heap.allocate(len);
 
         Crypto.cipher.init(cardKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
-        short ctLen = Crypto.cipher.doFinal(data, offset, dataLen, st.buffer, off);
-        Util.arrayCopyNonAtomic(st.buffer, off, cyphertext, ctOffset, ctLen);
-        cardKey.getKey(st.buffer, off);
-        Crypto.hmacSha256.init(st.buffer, off, (short)32);
+        short ctLen = Crypto.cipher.doFinal(data, offset, dataLen, heap.buffer, off);
+        Util.arrayCopyNonAtomic(heap.buffer, off, cyphertext, ctOffset, ctLen);
+        cardKey.getKey(heap.buffer, off);
+        Crypto.hmacSha256.init(heap.buffer, off, (short)32);
         Crypto.hmacSha256.update(iv, (short)0, (short)16);
-        Crypto.hmacSha256.doFinal(cyphertext, ctOffset, ctLen, st.buffer, off);
+        Crypto.hmacSha256.doFinal(cyphertext, ctOffset, ctLen, heap.buffer, off);
         short hmacLen = (short)32;
         // if we are hitting the limit
         if((short)(ctLen+hmacLen) == (short)256){
             hmacLen = (short)31;
         }
-        Util.arrayCopyNonAtomic(st.buffer, off, cyphertext, (short)(ctOffset+ctLen), hmacLen);
+        Util.arrayCopyNonAtomic(heap.buffer, off, cyphertext, (short)(ctOffset+ctLen), hmacLen);
         increaseIV();
-        st.free(len);
+        heap.free(len);
         return (short)(ctLen+hmacLen);
     }
-    // TODO: refactor, ugly
     static private void increaseIV(){
-        short val = (short)0;
-        byte carry = (byte)1;
-        for(short i=(short)15; i>=(short)0; i--){
-            val = iv[i];
-            if(val < (short)0){
-                val = (short)(val + (short)256);
-            }
-            if(val == (short)255){
-                val = (short)0;
-                iv[i] = (byte)0;
-            }else{
-                carry = (byte)0;
-                val = (short)(val+1);
-                iv[i] = (byte)val;
-                break;
-            }
+        short carry = 1;
+        for(short i=15; i>=0; i--){
+            carry += (iv[i]&0xFF);
+            iv[i] = (byte)carry;
+            carry >>= 8;
         }
-        if(carry==(byte)1){
+        if(carry!=0){
             closeChannel();
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
@@ -245,7 +233,6 @@ public class SecureChannel{
         Crypto.random.generateData(sharedSecret, (short)0, (short)32);
         hostKey.setKey(sharedSecret, (short)0);
         Crypto.random.generateData(sharedSecret, (short)0, (short)32);
-        Util.arrayCopyNonAtomic(sharedSecret, (short)0, iv, (short)0, (short)16);
-        Crypto.random.generateData(sharedSecret, (short)0, (short)32);
+        Util.arrayFillNonAtomic(iv, (short)0, (short)16, (byte)0x00);
     }
 }

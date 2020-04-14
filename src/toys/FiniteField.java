@@ -15,7 +15,7 @@ public class FiniteField{
     static private Cipher rsaCipher;
     static private RSAPublicKey rsaModFP;
     static private RSAPublicKey rsaModN;
-    static private TransientStack st;
+    static private TransientHeap heap;
     static final private byte[] RSA_FP = {
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
@@ -36,8 +36,8 @@ public class FiniteField{
         (byte)0xBA,(byte)0xAE,(byte)0xDC,(byte)0xE6,(byte)0xAF,(byte)0x48,(byte)0xA0,(byte)0x3B,
         (byte)0xBF,(byte)0xD2,(byte)0x5E,(byte)0x8C,(byte)0xD0,(byte)0x36,(byte)0x41,(byte)0x41
     };
-    static public void init(TransientStack stack){
-        st = stack;
+    static public void init(TransientHeap hp){
+        heap = hp;
         rsaModFP = (RSAPublicKey) KeyBuilder.buildKey(
                 KeyBuilder.TYPE_RSA_PUBLIC, KeyBuilder.LENGTH_RSA_512, false);
         rsaModN = (RSAPublicKey) KeyBuilder.buildKey(
@@ -76,8 +76,8 @@ public class FiniteField{
                                    RSAPublicKey rsaKey,
                                    byte[] mod, short modOff){    
         short len = (short)32;
-        short off = st.allocate(len);
-        byte[] buf = st.buffer;
+        short off = heap.allocate(len);
+        byte[] buf = heap.buffer;
         // set 32-byte exponent
         if(exponent > 0){ // positive
             Util.setShort(buf, (short)(off+30), exponent);
@@ -87,7 +87,7 @@ public class FiniteField{
             subtract(mod, modOff, buf, off, buf, off, (short)1);
         }
         powMod(a, aOff, buf, off, out, outOff, rsaKey);
-        st.free(len);
+        heap.free(len);
     }
     // exponentiation modulo 
     static public void powMod(byte[] a, short aOff,
@@ -95,15 +95,15 @@ public class FiniteField{
                               byte[] out, short outOff,
                               RSAPublicKey rsaKey){
         short len = (short)64;
-        short off = st.allocate(len);
-        byte[] buf = st.buffer;
+        short off = heap.allocate(len);
+        byte[] buf = heap.buffer;
 
         Util.arrayCopyNonAtomic(a, aOff, buf, (short)(off+32), (short)32);
         rsaKey.setExponent(exp, expOff, (short)32);
         rsaCipher.init(rsaKey, Cipher.MODE_ENCRYPT);
         rsaCipher.doFinal(buf, off, (short)64, buf, off);
         Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
-        st.free(len);
+        heap.free(len);
     }
     // get random number up to max value
     // max should be large enough as we are just trying over and over
@@ -122,8 +122,8 @@ public class FiniteField{
                               byte[] out,   short outOff, 
                               byte[] mod,   short modOff){
         short len = (short)32;
-        short off = st.allocate(len);
-        byte[] buf = st.buffer;
+        short off = heap.allocate(len);
+        byte[] buf = heap.buffer;
         // addition with carry
         short carry = add(a, aOff, b, bOff, buf, off);
         // carry will be 1 only if we got it from addition or
@@ -131,7 +131,7 @@ public class FiniteField{
         carry += isGreaterOrEqual(buf, off, mod, modOff);
         // subtract in any case and store result in output buffer
         subtract(buf, off, mod, modOff, out, outOff, carry);
-        st.free(len);
+        heap.free(len);
     }
     // constant time comparison
     static public short isGreaterOrEqual(byte[] a, short aOff,

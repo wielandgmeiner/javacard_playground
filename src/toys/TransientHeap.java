@@ -6,16 +6,16 @@ import javacard.security.*;
 
 /* 
  * Package: toys
- * Filename: TransientStack.java 
- * Class: TransientStack
+ * Filename: TransientHeap.java 
+ * Class: TransientHeap
  */
 // should it be called TransientHeap instead?
 // it kinda operates as a stack, but...
-public class TransientStack{
+public class TransientHeap{
     public byte[] buffer;
     private short[] cur;
 
-    public TransientStack(short maxSize){
+    public TransientHeap(short maxSize){
         // if maxSize < 0 -> throw error
         buffer = JCSystem.makeTransientByteArray(maxSize, JCSystem.CLEAR_ON_DESELECT);
         // because we want to keep it in RAM

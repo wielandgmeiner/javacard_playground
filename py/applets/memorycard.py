@@ -1,4 +1,4 @@
-from .teapot import Teapot
+from .helpers import AppletBase
 
 # embit library: https://github.com/diybitcoinhardware/embit
 # works with python3 and micropython
@@ -8,10 +8,9 @@ import os, hashlib, hmac
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
-class MemoryCard(Teapot):
+class MemoryCard(AppletBase):
     def __init__(self, connection=None):
-        super().__init__(connection)
-        self.AID = "B00B5111CB01"
+        super().__init__("B00B5111CB01", connection)
         self.iv = 0
         self.card_pubkey = None
         self.card_key = None

@@ -64,13 +64,13 @@ public class Secp256k1 {
     static private KeyAgreement ecAdd;
     static private Signature sig;
     static public ECPrivateKey tempPrivateKey;
-    static private TransientStack st;
+    static private TransientHeap heap;
 
     /**
      * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
      */
-    static void init(TransientStack stack) {
-        st = stack;
+    static void init(TransientHeap hp) {
+        heap = hp;
         ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
         ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
         ecAdd = KeyAgreement.getInstance(ALG_EC_PACE_GM, false);
@@ -105,8 +105,8 @@ public class Secp256k1 {
                            byte[] out, short outOff){
         // allocate space for y coordinate and number 7...
         short len = (short)64;
-        short off = st.allocate(len);
-        byte[] buf = st.buffer;
+        short off = heap.allocate(len);
+        byte[] buf = heap.buffer;
         // calculate x^3
         FiniteField.powShortModFP(point, (short)(pOff+1), (short)3, buf, off);
         buf[(short)(off+63)]=0x07;
@@ -121,20 +121,20 @@ public class Secp256k1 {
         Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, off, (short)32);
         out[outOff] = (byte)0x04;
         Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+1), (short)64);
-        st.free(len);
+        heap.free(len);
     }
     static void compress(byte[] point, short pOff,
                          byte[] out, short outOff){
         short len = (short)32;
-        short off = st.allocate(len);
-        byte[] buf = st.buffer;
+        short off = heap.allocate(len);
+        byte[] buf = heap.buffer;
 
         byte sign = (byte)(0x02+(point[(short)(pOff+64)]&0x01));
         // because maybe it's the same buffer...
         Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, (short)0, (short)32);
         out[outOff] = sign;
         Util.arrayCopyNonAtomic(buf, (short)0, out, (short)(outOff+1), (short)32);
-        st.free(len);
+        heap.free(len);
     }
     /**
      * Multiplies a scalar in the form of a private key by the given point. Internally uses a special version of EC-DH

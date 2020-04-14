@@ -25,10 +25,10 @@ public class Crypto{
     static public HMACDigest hmacSha256;
     static public HMACDigest hmacSha512;
     static public Cipher cipher;
-    static private TransientStack st;
+    static private TransientHeap heap;
 
-    static public void init(TransientStack stack){
-        st = stack;
+    static public void init(TransientHeap hp){
+        heap = hp;
         random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
         sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
@@ -48,10 +48,10 @@ public class Crypto{
         hash.reset();
         // get temp buffer for ikey, okey and U
         short len = (short)(blockSize*2+64);
-        short ikeyOff = st.allocate(len);
+        short ikeyOff = heap.allocate(len);
         short okeyOff = (short)(ikeyOff+blockSize);
         short dataOff = (short)(okeyOff+blockSize);
-        byte[] buf = st.buffer;
+        byte[] buf = heap.buffer;
 
         if(pLen > blockSize) {
             hash.doFinal(pass, pOff, pLen, buf, ikeyOff);
@@ -84,6 +84,6 @@ public class Crypto{
             }
         }
         // get our memory back
-        st.free(len);
+        heap.free(len);
     }
 }
