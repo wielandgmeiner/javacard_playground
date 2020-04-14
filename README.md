@@ -4,6 +4,8 @@ I don't like Java and JavaCardOS, but it is the only way to get some hardware se
 
 Work in progress, documentation for classes and applets is in the [`doc/`](./doc) folder.
 
+Tested on [`NXP J3H145`](https://www.smartcardfocus.com/shop/ilp/id~879/nxp-j3h145-dual-interface-java-card-144k/p/index.shtml) card.
+
 ## Applets
 
 - [`Teapot`](./doc/Teapot.md) - a very simple "Hello world" class that doesn't use any PIN protection or secure communication. It can only store up to `255` bytes of data and give it back on request. Perfect for testing communication with the card.

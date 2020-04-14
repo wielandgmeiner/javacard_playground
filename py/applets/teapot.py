@@ -1,4 +1,4 @@
-from .helpers import AppletBase
+from .core import AppletBase
 
 class Teapot(AppletBase):
     def __init__(self, connection=None):

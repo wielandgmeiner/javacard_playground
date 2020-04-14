@@ -48,9 +48,7 @@ public class MemoryCardApplet extends SecureApplet{
             'u', ' ', 's', 'o', ' ', 'w', 'h', 'a',
             't', '?'
         };
-        if (secretData == null){
-            secretData = new DataEntry(MAX_DATA_LENGTH);
-        }
+        secretData = new DataEntry(MAX_DATA_LENGTH);
         secretData.put(defaultData, (short)0, (short)defaultData.length);
     }
     protected short processSecureMessage(byte[] buf, short offset, short len){

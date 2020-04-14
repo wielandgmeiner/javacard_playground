@@ -39,6 +39,8 @@ public class CalculatorApplet extends Applet{
     // ecc again...
     private static final byte INS_COMPRESS             = (byte)0xB1;
     private static final byte INS_UNCOMPRESS           = (byte)0xB2;
+    // fix S in signature
+    private static final byte INS_FIX_SIGNATURE        = (byte)0xB3;
 
     private TransientHeap heap;
 
@@ -256,6 +258,14 @@ public class CalculatorApplet extends Applet{
             }
             Secp256k1.uncompress(buf, (short)(offset+1), buf, (short)0);
             apdu.setOutgoingAndSend((short)0, (short)65);
+            break;
+        case INS_FIX_SIGNATURE:
+            if(numElements != 1){
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            short delta = Secp256k1.setLowS(buf, (short)(offset+1));
+            buf[offset] += delta;
+            apdu.setOutgoingAndSend((short)0, (short)(buf[offset]+1+offset));
             break;
         default:
             // If you don't know the INS, throw an exception.

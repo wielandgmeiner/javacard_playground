@@ -96,6 +96,7 @@ public class SecureApplet extends Applet{
         heap = new TransientHeap((short)1024);
         // Crypto primitives. 
         // Keep it in this order.
+        FiniteField.init(heap);
         Secp256k1.init(heap);
         Crypto.init(heap);
         SecureChannel.init(heap);

@@ -32,9 +32,8 @@ public class TeapotApplet extends Applet{
     }
 
     public TeapotApplet(){
-        if (data == null){
-            data = new DataEntry(MAX_DATA_LENGTH);
-        }
+        
+        data = new DataEntry(MAX_DATA_LENGTH);
         byte[] defaultData = { 
             'I', ' ', 'a', 'm', ' ', 'a', ' ', 't', 
             'e', 'a', 'p', 'o', 't', ' ', 'g', 'i', 

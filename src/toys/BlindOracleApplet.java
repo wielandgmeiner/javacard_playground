@@ -23,24 +23,28 @@ public class BlindOracleApplet extends SecureApplet{
 
     // set seed and mnemonic. seed is 64 bytes, 
     // mnemonic - either full mnemonic or just sha512(mnemonic)
-    // (it's the same, card doesn't verify mnemonic anyways)
-    private static final byte SUBCMD_SEED_SET_SEED_AND_MNEMONIC = (byte)0x00;
+    // (it's the same, card doesn't verify mnemonic checksum anyways)
+    private static final byte SUBCMD_SEED_SET_SEED_AND_MNEMONIC  = (byte)0x00;
     // set mnemonic only
-    private static final byte SUBCMD_SEED_SET_MNEMONIC          = (byte)0x01;
+    private static final byte SUBCMD_SEED_SET_MNEMONIC           = (byte)0x01;
+    // set default seed only
+    // can be used for example when mnemonic + seed don't fit
+    // in a single message
+    private static final byte SUBCMD_SEED_SET_DEFAULT_SEED       = (byte)0x02;
     // derive default seed from mnemonic with empty password
     // WARNING: takes a long time, ~70 seconds!!!
-    private static final byte SUBCMD_SEED_CALCULATE_DEFAULT     = (byte)0x02;
+    private static final byte SUBCMD_SEED_CALCULATE_DEFAULT_SEED = (byte)0x03;
     // derive a seed from mnemonic and password
     // card will forget password after derivation
     // and will forget seed after deselect / reset
-    private static final byte SUBCMD_SEED_DERIVE_WITH_PASSWD    = (byte)0x03;
+    private static final byte SUBCMD_SEED_DERIVE_WITH_PASSWD     = (byte)0x04;
     // generate random "mnemonic" and seed
     // WARNING: doesn't return the seed, so it always stays only on this card
     //          add some backup mechanism in a script to recover if card breaks
     // As seed is never backed up we don't use pbkdf2 here
     // We use a simple way to calculate seed: seed=hmac(mnemonic, passphrase)
     // Then you don't need to wait for 1 minute and still can use passwords
-    private static final byte SUBCMD_SEED_GEN_RANDOM_SEED       = (byte)0x7D;
+    private static final byte SUBCMD_SEED_GEN_RANDOM             = (byte)0x7D;
 
     /************ master private key management *********/
 
@@ -59,8 +63,22 @@ public class BlindOracleApplet extends SecureApplet{
     // Otherwise will return errorcode
     private static final byte SUBCMD_BIP32_DERIVE_AND_SIGN       = (byte)0x02;
 
+    // 8*24+23 - max 24 words at most 8 characters each + spaces
+    private static final short MAX_MNEMONIC_LENGTH               = (short)215;
+    private static final short UNCOMPRESSED_XPUB_LEN             = (short)110;
 
     private DataEntry mnemonic;
+    private byte[] defaultSeed; // seed with empty password
+    private byte[] derivedSeed; // derived seed with provided password, transient
+    // root key
+    private ECPrivateKey rootPrv;
+    // for xpubs we use standard xpub but with uncompressed point - 0x04<x><y>
+    // in order to avoid expensive uncompression on every derivation
+    // we send to the host standard xpub though
+    private byte[] rootXpub; // 78+32 length
+    // child key
+    private ECPrivateKey childPrv;
+    private byte[] childXpub; // depth, chain code, pubkey, parent fingerprint
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -76,10 +94,17 @@ public class BlindOracleApplet extends SecureApplet{
         short len = (short)32;
         short off = heap.allocate(len);
 
-        if (secretData == null){
-            secretData = new DataEntry(MAX_DATA_LENGTH);
-        }
-        secretData.put(defaultData, (short)0, (short)defaultData.length);
+        mnemonic = new DataEntry(MAX_MNEMONIC_LENGTH);
+        defaultSeed = new byte[(short)64];
+        derivedSeed = JCSystem.makeTransientByteArray((short)64, JCSystem.CLEAR_ON_DESELECT);
+
+        rootPrv = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
+        Secp256k1.setCommonCurveParameters(rootPrv);
+        rootXpub = JCSystem.makeTransientByteArray(UNCOMPRESSED_XPUB_LEN, JCSystem.CLEAR_ON_DESELECT);
+
+        childPrv = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
+        Secp256k1.setCommonCurveParameters(childPrv);
+        childXpub = JCSystem.makeTransientByteArray(UNCOMPRESSED_XPUB_LEN, JCSystem.CLEAR_ON_DESELECT);
     }
     protected short processSecureMessage(byte[] buf, short offset, short len){
         return sendError(ERR_INVALID_CMD, buf, offset);

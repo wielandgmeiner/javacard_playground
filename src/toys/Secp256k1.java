@@ -69,7 +69,7 @@ public class Secp256k1 {
     /**
      * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
      */
-    static void init(TransientHeap hp) {
+    static public void init(TransientHeap hp) {
         heap = hp;
         ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
         ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
@@ -85,7 +85,7 @@ public class Secp256k1 {
      *
      * @param key the key where the curve parameters must be set
      */
-    static void setCommonCurveParameters(ECKey key) {
+    static public void setCommonCurveParameters(ECKey key) {
         key.setA(SECP256K1_A, (short)0, (short)SECP256K1_A.length);
         key.setB(SECP256K1_B, (short)0, (short)SECP256K1_B.length);
         key.setFieldFP(SECP256K1_FP, (short)0, (short)SECP256K1_FP.length);
@@ -94,14 +94,14 @@ public class Secp256k1 {
         key.setK(SECP256K1_K);
     }
 
-    static KeyPair newKeyPair() {
+    static public KeyPair newKeyPair() {
         KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, SECP256K1_KEY_SIZE);
         setCommonCurveParameters((ECPrivateKey)kp.getPrivate());
         setCommonCurveParameters((ECPublicKey)kp.getPublic());
         return kp;
     }
     // TODO: doesn't check if point is on the curve
-    static void uncompress(byte[] point, short pOff,
+    static public void uncompress(byte[] point, short pOff,
                            byte[] out, short outOff){
         // allocate space for y coordinate and number 7...
         short len = (short)64;
@@ -123,7 +123,7 @@ public class Secp256k1 {
         Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+1), (short)64);
         heap.free(len);
     }
-    static void compress(byte[] point, short pOff,
+    static public short compress(byte[] point, short pOff,
                          byte[] out, short outOff){
         short len = (short)32;
         short off = heap.allocate(len);
@@ -135,6 +135,22 @@ public class Secp256k1 {
         out[outOff] = sign;
         Util.arrayCopyNonAtomic(buf, (short)0, out, (short)(outOff+1), (short)32);
         heap.free(len);
+        return (short)33;
+    }
+    static public short serialize(ECPublicKey key, boolean compressed, 
+                           byte[] out, short outOff){
+        short lenOut = 65;
+        if(!compressed){
+            key.getW(out, outOff);
+        }else{
+            short len = (short)65;
+            short off = heap.allocate(len);
+            byte[] buf = heap.buffer;
+            key.getW(buf, off);
+            lenOut = compress(buf, off, out, outOff);
+            heap.free(len);
+        }
+        return lenOut;
     }
     /**
      * Multiplies a scalar in the form of a private key by the given point. Internally uses a special version of EC-DH
@@ -148,7 +164,7 @@ public class Secp256k1 {
      * @param outOffset the offset in the output buffer
      * @return the length of the data written in the out buffer
      */
-    static short pointMultiply(
+    static public short pointMultiply(
                     ECPrivateKey privateKey, 
                     byte[] point, short pointOffset, short pointLen, 
                     byte[] out, short outOffset)
@@ -161,7 +177,7 @@ public class Secp256k1 {
      * If you want to add two points: P1 + P2
      * set tweak=1, tweak.G = P1, point = P2 -> you'll get it.
      */
-    static short tweakAdd(
+    static public short tweakAdd(
                     ECPrivateKey tweak,
                     byte[] point, short pOff, short pLen,
                     byte[] out, short outOff
@@ -181,7 +197,7 @@ public class Secp256k1 {
      * @param outOffset the offset in the output buffer
      * @return the length of the data written in the out buffer
      */
-    static short ecdh(
+    static public short ecdh(
                     ECPrivateKey privateKey, 
                     byte[] point, short pointOffset, short pointLen, 
                     byte[] out, short outOffset)
@@ -190,12 +206,60 @@ public class Secp256k1 {
         return ecMultX.generateSecret(point, pointOffset, pointLen, out, outOffset);
     }
 
-    static short sign(
+    static public short sign(
                     ECPrivateKey privateKey, 
                     byte[] msg, short msgOffset,
                     byte[] out, short outOffset)
     {
         sig.init(privateKey, Signature.MODE_SIGN);
-        return sig.signPreComputedHash(msg, msgOffset, (short)32, out, outOffset);
+        short len = sig.signPreComputedHash(msg, msgOffset, (short)32, out, outOffset);
+        return (short)(len+setLowS(out, outOffset));
+    }
+    static public void generateRandomSecret(byte[] buf, short off){
+        FiniteField.getRandomElement(SECP256K1_R, (short)0, buf, off);
+    }
+    // fixes S, returns delta in the length
+    static public short setLowS(byte[] sig, short sigOff){
+        short sLenOff = (short)(sigOff+5+sig[(short)(sigOff+3)]);
+        short sLen = sig[sLenOff];
+        if(sLen < (short)32){ // no need to do anything for sure
+            return (short)0;
+        }
+        // otherwise check
+        short len = (short)32;
+        short off = heap.allocate(len);
+        byte[] buf = heap.buffer;
+        short numZeroes = (short)0;
+        short delta = (short)0;
+        if(sLen == (short)33){ // need to subtract for sure
+            FiniteField.subtract(SECP256K1_R, (short)0, sig, (short)(sLenOff+2), buf, off, (short)1);
+            delta--;
+        }else{ // len = 32
+            FiniteField.subtract(SECP256K1_R, (short)0, sig, (short)(sLenOff+1), buf, off, (short)1);
+        }
+        // check if we need to replace it
+        if(FiniteField.isGreaterOrEqual(sig, (short)(sLenOff+1+sLen-32), buf, off) > 0){
+            // find number of zeroes
+            while(numZeroes<32){
+                if(buf[(short)(off+numZeroes)]!=(byte)0x00){
+                    // if high bit is set - we need zero
+                    // hack - in Java bytes are signed...
+                    if(buf[(short)(off+numZeroes)]<0){
+                        numZeroes--;
+                    }
+                    break;
+                }
+                numZeroes++;
+            }
+            delta -= numZeroes;
+            Util.arrayCopyNonAtomic(buf, (short)(off+numZeroes), sig, (short)(sLenOff+1), (short)(32-numZeroes));
+            // if length have changed
+            if(delta < 0){
+                sig[(short)(sigOff+1)]+=delta;
+                sig[sLenOff]+=delta;
+            }
+        }
+        heap.free(len);
+        return delta;
     }
 }
