@@ -71,12 +71,12 @@ public class SingleUseKeyApplet extends SecureApplet{
                 generateRandomKey();
                 // no need to break - we return compressed pubkey
                 // but compiler complains, so
-                return (short)(2+Secp256k1.serialize((ECPublicKey)singleUseKeyPair.getPublic(), true, buf, (short)2));
+                return (short)(2+Secp256k1.serialize((ECPublicKey)singleUseKeyPair.getPublic(), true, buf, (short)(offset+2)));
             case SUBCMD_SINGLE_USE_KEY_GET_PUBKEY:
                 // serialize pubkey in compressed form
-                return (short)(2+Secp256k1.serialize((ECPublicKey)singleUseKeyPair.getPublic(), true, buf, (short)2));
+                return (short)(2+Secp256k1.serialize((ECPublicKey)singleUseKeyPair.getPublic(), true, buf, (short)(offset+2)));
             case SUBCMD_SINGLE_USE_KEY_SIGN:
-                len = Secp256k1.sign((ECPrivateKey)singleUseKeyPair.getPrivate(), buf, (short)2, buf, (short)2);
+                len = Secp256k1.sign((ECPrivateKey)singleUseKeyPair.getPrivate(), buf, (short)(offset+2), buf, (short)(offset+2));
                 // when done - overwrite key with new random values
                 generateRandomKey();
                 return (short)(2+len);
@@ -88,6 +88,7 @@ public class SingleUseKeyApplet extends SecureApplet{
         Secp256k1.generateRandomSecret(tempBuf, (short)0);
         ECPrivateKey prv = (ECPrivateKey)singleUseKeyPair.getPrivate();
         prv.setS(tempBuf, (short)0, (short)32);
+        
         ECPublicKey pub = (ECPublicKey)singleUseKeyPair.getPublic();
         Secp256k1.pointMultiply(prv,
                                 Secp256k1.SECP256K1_G, (short)0, (short)65,
