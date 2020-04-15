@@ -197,7 +197,7 @@ class SecureAppletBase(AppletBase):
         arr = plain.split(b"\x80")
         if len(arr)==1 or len(arr[-1].replace(b'\x00',b''))>0:
             raise RuntimeError("Wrong padding")
-        return (b"".join(arr[:-1]))
+        return (b"\x80".join(arr[:-1]))
     
     def secure_request(self, data):
         # if counter reached maximum - reestablish channel

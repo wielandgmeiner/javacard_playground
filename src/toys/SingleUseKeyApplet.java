@@ -16,6 +16,8 @@ public class SingleUseKeyApplet extends SecureApplet{
     // commands transmitted over secure channel
     // 0x00 - 0x04 are reserved
     private static final byte CMD_SINGLE_USE_KEY      = (byte)0x20;
+    // instructions for plaintext
+    private static final byte INS_SINGLE_USE_KEY      = (byte)0xA0;
 
     /************ key management *********/
 
@@ -45,11 +47,34 @@ public class SingleUseKeyApplet extends SecureApplet{
         singleUseKeyPair = Secp256k1.newKeyPair();
         generateRandomKey();
     }
+    // ok, if you want to use it without secure communication 
+    // - you should be able to, even though it might be an issue with MITM
+    // if you don't - comment out this function
     protected short processPlainMessage(byte[] buf, short off, short len){
-        // ok, if you want to use it without secure communication 
-        // - you should be able to
-        // TODO: implement message handling without secure channel
-        ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+        // ugly copy-paste for now
+        switch (buf[ISO7816.OFFSET_INS]){
+            case INS_SINGLE_USE_KEY:
+                switch (buf[ISO7816.OFFSET_P1]){
+                    case SUBCMD_SINGLE_USE_KEY_GENERATE:
+                        generateRandomKey();
+                        // no need to break - we return compressed pubkey
+                        // but compiler complains, so
+                        return Secp256k1.serialize((ECPublicKey)singleUseKeyPair.getPublic(), true, buf, (short)0);
+                    case SUBCMD_SINGLE_USE_KEY_GET_PUBKEY:
+                        // serialize pubkey in compressed form
+                        return Secp256k1.serialize((ECPublicKey)singleUseKeyPair.getPublic(), true, buf, (short)0);
+                    case SUBCMD_SINGLE_USE_KEY_SIGN:
+                        len = Secp256k1.sign((ECPrivateKey)singleUseKeyPair.getPrivate(), buf, ISO7816.OFFSET_CDATA, buf, (short)0);
+                        // when done - overwrite key with new random values
+                        generateRandomKey();
+                        return len;
+                    default:
+                        ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
+                }
+                break;
+            default:
+                ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+        }
         return (short)0;
     }
     protected short processSecureMessage(byte[] buf, short offset, short len){
