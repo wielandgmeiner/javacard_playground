@@ -94,7 +94,7 @@ public class Secp256k1 {
         key.setK(SECP256K1_K);
     }
 
-    static public KeyPair newKeyPair() {
+    static public KeyPair newKeyPair(){
         KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, SECP256K1_KEY_SIZE);
         setCommonCurveParameters((ECPrivateKey)kp.getPrivate());
         setCommonCurveParameters((ECPublicKey)kp.getPublic());
@@ -171,6 +171,25 @@ public class Secp256k1 {
     {
         ecMult.init(privateKey);
         return ecMult.generateSecret(point, pointOffset, pointLen, out, outOffset);
+    }
+    static public short pubkeyCreate(
+                    ECPrivateKey privateKey, boolean compressed,
+                    byte[] out, short outOff){
+        if(compressed){
+            short len = (short)65;
+            short off = heap.allocate(len);
+            byte[] buf = heap.buffer;
+            pointMultiply(privateKey, 
+                        SECP256K1_G, (short)0, (short)65, 
+                        buf, off);
+            short lenOut = compress(buf, off, out, outOff);
+            heap.free(len);
+            return lenOut;
+        }else{
+            return pointMultiply(privateKey, 
+                        SECP256K1_G, (short)0, (short)65, 
+                        out, outOff);
+        }
     }
     /**
      * Adds tweak*G to the point. Returs P+tweak*G.

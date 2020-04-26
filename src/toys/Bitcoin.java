@@ -11,8 +11,46 @@ import javacard.security.*;
  */
 public class Bitcoin{
     static private TransientHeap heap;
+
+    // 8*24+23 - max 24 words at most 8 characters each + spaces
+    public static final short MAX_MNEMONIC_LENGTH      = (short)215;
+    // 74 bytes, without prefix: 
+    // depth, child index, parent fingerprint, chain code, pubkey
+    public static final short SEED_LEN                 = (short)64;
+    public static final short HDKEY_LEN                = (short)74;
+    public static final short HDKEY_DEPTH_OFFSET       = (short)0;
+    public static final short HDKEY_INDEX_OFFSET       = (short)1;
+    public static final short HDKEY_FINGERPRINT_OFFSET = (short)5;
+    public static final short HDKEY_CHAINCODE_OFFSET   = (short)9;
+    public static final short HDKEY_FLAG_OFFSET        = (short)41;
+    public static final short HDKEY_PUB_KEY_OFFSET     = (short)41;
+    public static final short HDKEY_PRV_KEY_OFFSET     = (short)42;
+    public static final byte[] HDKEY_SEED_KEY = {'B','i','t','c','o','i','n',' ','s','e','e','d'};
+
     static public void init(TransientHeap hp){
         heap = hp;
+    }
+    static public short xprvFromSeed(byte[] seed, short seedOff,
+                                     byte[] out, short outOff){
+        // set depth, child number and fingerprint to zero
+        Util.arrayFillNonAtomic(out, outOff, HDKEY_LEN, (byte)0);
+        short len = (short)64;
+        short off = heap.allocate(len);
+        // do hmac_sha512("Bitcoin seed", seed)
+        Crypto.hmacSha512.init(HDKEY_SEED_KEY, (short)0, (short)(HDKEY_SEED_KEY.length));
+        Crypto.hmacSha512.doFinal(seed, seedOff, SEED_LEN, heap.buffer, off);
+        // copy first 32 bytes to private key
+        Util.arrayCopyNonAtomic(
+                    heap.buffer, off, 
+                    out, (short)(outOff+HDKEY_PRV_KEY_OFFSET), 
+                    (short)32);
+        // copy last 32 bytes to chain code
+        Util.arrayCopyNonAtomic(
+                    heap.buffer, (short)(off+32), 
+                    out, (short)(outOff+HDKEY_CHAINCODE_OFFSET), 
+                    (short)32);
+        heap.free(len);
+        return HDKEY_LEN;
     }
     // TODO: refactor xprvChild and xpubChild to the same function
     //       - use arr[33] to detect if it's xpub or xprv

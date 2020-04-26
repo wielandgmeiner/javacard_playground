@@ -26,6 +26,9 @@
       <cap output="SingleUseKeyApplet.cap" sources="src/toys">
         <applet class="toys.SingleUseKeyApplet" aid="B00B5111CD01"/>
       </cap>
+      <cap output="BlindOracleApplet.cap" sources="src/toys">
+        <applet class="toys.BlindOracleApplet" aid="B00B5111CE01"/>
+      </cap>
     </javacard>
   </target>
 </project>

@@ -21,6 +21,9 @@
 package toys;
 import javacard.framework.Util;
 
+// requires 64 bytes scratch
+// doesn't look like a constant time - there is a switch statement
+// ok for fingerprints, but not for anything secret
 public class Ripemd160 {
     public static void hash32(byte[] buffer, short offset, byte[] target, short targetOffset, byte[] scratch, short scratchOffset)
     {

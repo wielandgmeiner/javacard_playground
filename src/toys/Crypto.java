@@ -36,6 +36,18 @@ public class Crypto{
         hmacSha512 = new HMACDigest(sha512, HMACDigest.ALG_SHA_512_BLOCK_SIZE);
         cipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
     }
+    // hash160(data)
+    static public short hash160(byte[] data, short dataOff, short dataLen,
+                                byte[] out, short outOff){
+        short len = (short)96;
+        short off = heap.allocate(len);
+        short scratchOff = (short)(off+32);
+        sha256.reset();
+        sha256.doFinal(data, dataOff, dataLen, heap.buffer, off);
+        Ripemd160.hash32(heap.buffer, off, out, outOff, heap.buffer, scratchOff);
+        heap.free(len);
+        return (short)20;
+    }
     static public void pbkdf2(byte[] pass, short pOff, short pLen,
                               byte[] salt, short sOff, short sLen,
                               short iterations,

@@ -56,6 +56,7 @@ public class BlindOracleApplet extends SecureApplet{
     /************ master private key management *********/
 
     // first use SUBCMD_SEED_DERIVE_WITH_PASSWD to get master private key
+    // pass empty string if you want to use default seed
     // returns 4-byte fingerprint (hash160(pubkey)[:4])
     // data: ignored
     private static final byte SUBCMD_BIP32_GET_FINGERPRINT       = (byte)0x00;
@@ -74,10 +75,6 @@ public class BlindOracleApplet extends SecureApplet{
     // data: <32-byte message hash><4-byte fingerprint><4-byte index>...<4-byte index>
     private static final byte SUBCMD_BIP32_DERIVE_AND_SIGN       = (byte)0x02;
 
-    // 8*24+23 - max 24 words at most 8 characters each + spaces
-    private static final short MAX_MNEMONIC_LENGTH               = (short)215;
-    private static final short XPUB_LEN                          = (short)78;
-
     private DataEntry mnemonic;
     private byte[] defaultSeed; // seed with empty password
     private byte[] derivedSeed; // derived seed with provided password, transient
@@ -87,10 +84,10 @@ public class BlindOracleApplet extends SecureApplet{
     private boolean randomSeedIsUsed = false;
     // root key
     private ECPrivateKey rootPrv;
-    private byte[] rootXpub; // 78 bytes
+    private byte[] rootXpub; // 74 bytes, without prefix: depth, child index, parent fingerprint, chain code, pubkey
     // child key
     private ECPrivateKey childPrv;
-    private byte[] childXpub; // depth, child index, parent fingerprint, chain code, pubkey
+    private byte[] childXpub; // 74 bytes, without prefix: depth, child index, parent fingerprint, chain code, pubkey
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -101,25 +98,85 @@ public class BlindOracleApplet extends SecureApplet{
     }
     public BlindOracleApplet(){
         super();
+        Bitcoin.init(heap);
 
-        // generate random mnemonic - because why not?
-        short len = (short)32;
-        short off = heap.allocate(len);
-
-        mnemonic = new DataEntry(MAX_MNEMONIC_LENGTH);
+        mnemonic = new DataEntry(Bitcoin.MAX_MNEMONIC_LENGTH);
         defaultSeed = new byte[(short)64];
         derivedSeed = JCSystem.makeTransientByteArray((short)64, JCSystem.CLEAR_ON_DESELECT);
 
         rootPrv = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
         Secp256k1.setCommonCurveParameters(rootPrv);
-        rootXpub = JCSystem.makeTransientByteArray(XPUB_LEN, JCSystem.CLEAR_ON_DESELECT);
+        rootXpub = JCSystem.makeTransientByteArray(Bitcoin.HDKEY_LEN, JCSystem.CLEAR_ON_DESELECT);
 
         childPrv = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
         Secp256k1.setCommonCurveParameters(childPrv);
-        childXpub = JCSystem.makeTransientByteArray(XPUB_LEN, JCSystem.CLEAR_ON_DESELECT);
+        childXpub = JCSystem.makeTransientByteArray(Bitcoin.HDKEY_LEN, JCSystem.CLEAR_ON_DESELECT);
     }
     protected short processSecureMessage(byte[] buf, short offset, short len){
-        return sendError(ERR_INVALID_CMD, buf, offset);
+        // you need to unlock the card with the PIN first
+        if(isLocked()){
+            return sendError(ERR_CARD_LOCKED, buf, offset);
+        }
+        switch(buf[offset]){
+            case CMD_SEED:
+                return processSeedCommand(buf, offset, len);
+            case CMD_BIP32:
+                return processBip32Command(buf, offset, len);
+            default:
+                return sendError(ERR_INVALID_CMD, buf, offset);
+        }
+    }
+    protected short processSeedCommand(byte[] buf, short offset, short len){
+        byte subcmd = buf[(short)(offset+1)];
+        buf[offset] = (byte)0x90;
+        buf[(short)(offset+1)] = (byte)0x00;
+        switch (subcmd){
+            case SUBCMD_SEED_SET_DEFAULT_SEED:
+                // check it's 64 bytes
+                if(len!=(short)(66)){
+                    return sendError(ERR_INVALID_LEN, buf, offset);
+                }
+                // copy to defaulSeed
+                Util.arrayCopy(buf, (short)(offset+2), defaultSeed, (short)0, (short)64);
+                return (short)2;
+            case SUBCMD_SEED_DERIVE_WITH_PASSWD:
+                // check if empty password
+                if(len==(short)2){
+                    Util.arrayCopyNonAtomic(defaultSeed, (short)0, derivedSeed, (short)0, (short)64);
+                    deriveRoot();
+                    return (short)2;
+                }else{
+                    return sendError(ERR_NOT_IMPLEMENTED, buf, offset);
+                }
+            default:
+                return sendError(ERR_INVALID_SUBCMD, buf, offset);
+        }
+    }
+    // TODO: check if seed is loaded
+    protected short processBip32Command(byte[] buf, short offset, short len){
+        byte subcmd = buf[(short)(offset+1)];
+        buf[offset] = (byte)0x90;
+        buf[(short)(offset+1)] = (byte)0x00;
+        switch (subcmd){
+            case SUBCMD_BIP32_GET_XPUB:
+                // check if empty derivation
+                if(len==(short)2){
+                    Util.arrayCopyNonAtomic(rootXpub, (short)0, buf, (short)2, Bitcoin.HDKEY_LEN);
+                    return (short)(2+Bitcoin.HDKEY_LEN);
+                }else{
+                    return sendError(ERR_NOT_IMPLEMENTED, buf, offset);
+                }
+            default:
+                return sendError(ERR_INVALID_SUBCMD, buf, offset);
+        }
+    }
+    protected void deriveRoot(){
+        // first derive xprv
+        Bitcoin.xprvFromSeed(derivedSeed, (short)0, rootXpub, (short)0);
+        // copy private key
+        rootPrv.setS(rootXpub, Bitcoin.HDKEY_PRV_KEY_OFFSET, (short)32);
+        // replace private key with public
+        Secp256k1.pubkeyCreate(rootPrv, true, rootXpub, Bitcoin.HDKEY_PUB_KEY_OFFSET);
     }
     protected short processPlainMessage(byte[] msg, short msgOff, short msgLen){
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);

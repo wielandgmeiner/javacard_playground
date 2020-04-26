@@ -71,6 +71,7 @@ public class SecureApplet extends Applet{
     protected static final short ERR_INVALID_LEN        = (short)0x0403;
     protected static final short ERR_INVALID_CMD        = (short)0x0404;
     protected static final short ERR_INVALID_SUBCMD     = (short)0x0405;
+    protected static final short ERR_NOT_IMPLEMENTED    = (short)0x0406;
     protected static final short ERR_CARD_LOCKED        = (short)0x0501;
     protected static final short ERR_INVALID_PIN        = (short)0x0502;
     protected static final short ERR_NO_ATTEMPTS_LEFT   = (short)0x0503;
