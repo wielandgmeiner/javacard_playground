@@ -112,9 +112,9 @@ class SecureAppletBase(AppletBase):
         secret = os.urandom(32)
         host_prv = secret
         host_pub = secp256k1.ec_pubkey_create(secret)
-        data = bytes([65])+secp256k1.ec_pubkey_serialize(host_pub, secp256k1.EC_UNCOMPRESSED)
         # ee mode - ask card to create ephimerial key and send it to us
         if mode=="ee":
+            data = bytes([65])+secp256k1.ec_pubkey_serialize(host_pub, secp256k1.EC_UNCOMPRESSED)
             # get ephimerial pubkey from the card
             res = self.request("B0B40000"+data.hex())
             pub = secp256k1.ec_pubkey_parse(res[:65])
@@ -136,27 +136,33 @@ class SecureAppletBase(AppletBase):
                 raise RuntimeError("Signature is invalid: %r", res[97:].hex())
         # se mode - use our ephimerial key with card's static key
         else:
+            nonce_host = os.urandom(32)
+            payload = secp256k1.ec_pubkey_serialize(host_pub, secp256k1.EC_UNCOMPRESSED)+nonce_host
+            data = bytes([len(payload)])+payload
             # ugly copy
             pub = secp256k1.ec_pubkey_parse(secp256k1.ec_pubkey_serialize(self.card_pubkey))
             secp256k1.ec_pubkey_tweak_mul(pub, secret)
             shared_secret = secp256k1.ec_pubkey_serialize(pub)[1:33]
-            self.host_key = hashlib.sha256(b'host'+shared_secret).digest()
-            self.card_key = hashlib.sha256(b'card'+shared_secret).digest()
-            shared_hash = hashlib.sha256(self.host_key+self.card_key).digest()
             res = self.request("B0B30000"+data.hex())
-            recv_hmac = res[32:64]
+            nonce_card = res[:32]
+            secrets_hash = res[32:64]
+            recv_hmac = res[64:96]
+            secret_with_nonces = hashlib.sha256(shared_secret+nonce_host+nonce_card).digest()
+            self.host_key = hashlib.sha256(b'host'+secret_with_nonces).digest()
+            self.card_key = hashlib.sha256(b'card'+secret_with_nonces).digest()
+            shared_hash = hashlib.sha256(self.host_key+self.card_key).digest()
+            if shared_hash != secrets_hash:
+                print("Wrong hash of secrets: %s - %s" % (shared_hash.hex(), secrets_hash.hex()))
             h = hmac.new(self.card_key, digestmod='sha256')
-            h.update(res[:32])
+            h.update(res[:64])
             expected_hmac = h.digest()
             if expected_hmac != recv_hmac:
                 raise RuntimeError("Wrong HMAC. Got %s, expected %s"%(recv_hmac.hex(),expected_hmac.hex()))
-            sig = secp256k1.ecdsa_signature_parse_der(res[64:])
+            sig = secp256k1.ecdsa_signature_parse_der(res[96:])
             # in case card doesn't follow low s rule (but it should)
             sig = secp256k1.ecdsa_signature_normalize(sig)
-            if not secp256k1.ecdsa_verify(sig, hashlib.sha256(res[:64]).digest(), self.card_pubkey):
+            if not secp256k1.ecdsa_verify(sig, hashlib.sha256(res[:96]).digest(), self.card_pubkey):
                 raise RuntimeError("Signature is invalid")
-            if res[:32] != shared_hash:
-                raise RuntimeError("Meh... Something didn't work? Card returned %s, we have %s" % (res[:32].hex(), shared_hash.hex()))
         # reset iv
         self.iv = 0
         self.is_secure_channel_open = True

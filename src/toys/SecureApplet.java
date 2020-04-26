@@ -186,12 +186,13 @@ public class SecureApplet extends Applet{
     }
     private short setHostPubkey(byte[] msg, short msgOff, short msgLen){
         // check if data length is ok
-        if(msgLen != (byte)65){
+        if(msgLen != (short)97){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
-        SecureChannel.establishSharedSecret(msg, msgOff, false);
+        // will put nonce there
+        short len = SecureChannel.establishSharedSecret(msg, msgOff, false, msg, (short)0);
         // get hash of the shared secret and put it to the buffer
-        short len = SecureChannel.getSharedHash(msg, (short)0);
+        len += SecureChannel.getSharedHash(msg, len);
         // add hmac using shared secret
         len += SecureChannel.authenticateData(msg, (short)0, len, msg, len);
         // add signature with static pubkey
@@ -203,7 +204,8 @@ public class SecureApplet extends Applet{
         if(msgLen != (byte)65){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
-        SecureChannel.establishSharedSecret(msg, msgOff, true);
+        // for consistency with se mode
+        SecureChannel.establishSharedSecret(msg, msgOff, true, msg, (short)0);
         // get session pubkey and put it to the buffer
         short len = SecureChannel.serializeSessionPubkey(msg, (short)0);
         // add hmac using shared secret

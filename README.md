@@ -11,11 +11,9 @@ Currently all the applets are tested on [NXP JCOP3 J3H145 card](https://www.smar
 - [`Teapot`](./doc/Teapot.md) - a very simple "Hello world" class that doesn't use any PIN protection or secure communication. It can only store up to `255` bytes of data and give it back on request. Perfect for testing communication with the card.
 - [`MemoryCard`](./doc/MemoryCard.md) - adds PIN protection and secure communication.
 - [`Calculator`](./doc/Calculator.md) - some ariphmetics on the card - bip32, hmac, inversion, point addition.
-- [`BlindOracle`](./doc/BlindOracle.md) - allows bip32 key derivation so the key never leaves the card. Includes nonce blinding protocol to minimize trust in proprietary stuff deployed on the card.
+- [`BlindOracle`](./doc/BlindOracle.md) - allows bip32 key derivation so the key never leaves the card. TODO: Should include nonce blinding protocol to minimize trust in proprietary stuff deployed on the card.
 - [`SingleUseKey`](./doc/SingleUseKey.md) - generates a temporary key on the card that can be used only once to sign a single hash. After that the key is deleted. Can be used for proposals like Bob's and Bryan's.
 - [`HardwareSpaghettiMonster`](./doc/HardwareSpaghettiMonster.md) - should add custom policies to the card.
-
-For `Teapot` and `MemoryCard` any JavaCard should work. For `BlindOracle` or `HardwareSpaghettiMonster` [NXP J3H145](https://www.smartcardfocus.com/shop/ilp/id~879/nxp-j3h145-dual-interface-java-card-144k/p/index.shtml) should work fine.
 
 # Toolchain installation for Mac
 

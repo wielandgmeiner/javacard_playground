@@ -57,11 +57,23 @@ Example: `B0B2000000` -> returns 65 bytes with static public key of the card, fo
 
 For secure communication we need to establish shared secrets. For this we use ECDH key agreement. We use `AES_CBC` for encryption with `M2` padding (add `0x8000..00` to round to 16-byte blocks). HMAC-SHA256 is used for authentication and applied to the ciphertext (encrypt-then-hmac).
 
-There are two different modes you can use - `es` and `ee`. Host should **ALWAYS** generate a fresh ephimerial key for secure channel because `iv` is used in the counter mode, and if the same keys are used you will ruin security of the channel. `ee` mode mitigates it as it asks the card to generate a random key, but as EC keys often can't be placed in the RAM (at least until we get 3.0.5 cards), it uses EEPROM cycles.
+There are two different modes you can use - `es` and `ee`.
 
-In `es` mode you need to send your public key to the card, then x-coordinate of `ECDH(e,s)` is used as a base to generate two shared secrets: `host_key=SHA256('host'|x-secret)` for the host side and `card_key=SHA256('card'|x-secret)` for the card side. `hash=SHA256(host_key|card_key)` will be returned from the card, so you can verify that you have correct secrets.
+In `es` mode you need to send your public key to the card and a random 32-byte nonce `nonce_host`.
 
-In `ee` mode card will return it's fresh public key that you should use for key agreement. x-coordinate of `ECDH(e,e)` is used in this case. `card_key` and `host_key` are generated the same way.
+Card returns it's own random nonce - `nonce_card`.
+
+Hash of the x-coordinate of `ECDH(e,s)` with both nonces is used as a base to generate two shared secrets:
+
+- `secret = SHA256(x:ECDH(e,s)|nonce_host|nonce_card)`
+- `host_key=SHA256('host'|secret)` for the host side and 
+- `card_key=SHA256('card'|secret)` for the card side. 
+
+`hash=SHA256(host_key|card_key)` will be also returned from the card together with the nonce, so you can verify that you have correct secrets.
+
+As both card and host use random nonces it's ok to use static public key on both sides, so `es` mode can also be an `ss` mode.
+
+In `ee` mode there is no need in random nonces as both public keys are fresh random. The card will return it's fresh public key that you should use for key agreement. x-coordinate of `ECDH(e,e)` is used in this case. `card_key` and `host_key` are generated the same way.
 
 When secure channel is established `iv` for the `AES` cypher is set to `0` and incremented on every message. We can use the same `iv` both for incoming and outgoing data because we use different keys on each side. `iv` is not transmitted but is used in `hmac` authentication.
 
@@ -69,7 +81,7 @@ If you are out of sync for some reason just re-establish secure channel. If `iv`
 
 ### Establish secure channel in ES mode
 
-Returns `SHA256(host_key | card_key) | HMAC-SHA256(card_key, data)`.
+Returns `<32-byte card nonce> | SHA256(host_key | card_key) | HMAC-SHA256(card_key, data)`.
 
 | Field  | Value                                    |
 | ------ | ---------------------------------------- |
@@ -81,7 +93,7 @@ Returns `SHA256(host_key | card_key) | HMAC-SHA256(card_key, data)`.
 
 ### Establish secure channel in EE mode
 
-Returns `SHA256(host_key | card_key) | HMAC-SHA256(card_key, data)`.
+Returns `<random_card_pubkey> | HMAC-SHA256(card_key, data) | ECDSA_SIG(card_pubkey, data incl HMAC)`.
 
 | Field  | Value                                    |
 | ------ | ---------------------------------------- |
@@ -90,8 +102,6 @@ Returns `SHA256(host_key | card_key) | HMAC-SHA256(card_key, data)`.
 | P0, P1 | ignored, use for example `0x00` for both |
 | DATA   | 65-byte public key of the host serialized in uncompressed form |
 | RETURN | `SW`: `0x9000`, `DATA`: 65-byte cards fresh pubkey followed by `HMAC-SHA256(card_key, data)`, then ECDSA signature signing all previous data |
-
-ECDSA signature in the card doesn't follow the low-s rule, so normalize it before you verify.
 
 ### Secure message
 

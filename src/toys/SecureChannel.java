@@ -68,10 +68,12 @@ public class SecureChannel{
         pub.getW(buf, offset);
         return (short)65;
     }
-    static public void establishSharedSecret(byte[] buf, short offset, 
-                                             boolean useEphimerial){
+    static public short establishSharedSecret(byte[] buf, short offset, 
+                                             boolean useEphimerial,
+                                             byte[] out, short outOff){
         short len = (short)32;
         short off = heap.allocate(len);
+        short outLen = (short)0;
         // first we wipe what we already have
         closeChannel();
         // now we establish new shared secret
@@ -91,7 +93,16 @@ public class SecureChannel{
         }else{
             Secp256k1.ecdh( (ECPrivateKey)staticKeyPair.getPrivate(), 
                             buf, offset, (short)65, 
-                            sharedSecret, (short)0);
+                            heap.buffer, off);
+            Crypto.sha256.reset();
+            // shared secret
+            Crypto.sha256.update(heap.buffer, off, (short)32);
+            // host nonce
+            Crypto.sha256.update(buf, (short)(offset+65), (short)32);
+            // card nonce
+            Crypto.random.generateData(out, outOff, (short)32);
+            Crypto.sha256.doFinal(out, outOff, (short)32, sharedSecret, (short)0);
+            outLen += 32;
         }
         Crypto.sha256.reset();
         Crypto.sha256.update(CARD_PREFIX, (short)0, (short)CARD_PREFIX.length);
@@ -105,6 +116,7 @@ public class SecureChannel{
         // now we can set iv counter to zero
         Util.arrayFillNonAtomic(iv, (short)0, (short)16, (byte)0);
         heap.free(len);
+        return outLen;
     }
     static public short serializeSessionPubkey(byte[] buf, short offset){
         // pubkey is just ECDH of private key with G
