@@ -52,6 +52,83 @@ public class Bitcoin{
         heap.free(len);
         return HDKEY_LEN;
     }
+    static public boolean bip32IsPrivate(byte[] hdKey, short hdOff){
+        return (hdKey[(short)(hdOff+HDKEY_FLAG_OFFSET)]==(byte)0x00);
+    }
+    // takes a 74-byte xprv or xpub and derives
+    // a child with derivation path der
+    // each index is 4-byte long, 
+    // derLen is length of derivation path in bytes, 
+    // so if you are deriving m/44h/0h/0h derLen should be 12
+    // if xpub is passed as an argument 
+    // only non-hardened derivation is possible.
+    // Output will be 74 bytes long: 
+    // depth, child index, parent fingerprint, chain code, key
+    static public short bip32Derive(byte[] hdKey, short hdOff,
+                                    byte[] der, short derOff, short derLen,
+                                    byte[] out, short outOff){
+        boolean isPrivate = bip32IsPrivate(hdKey, hdOff);
+        if((derLen % 4)!=0){
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        }
+        if(!isPrivate){
+            for(short i=0; i<derLen; i+=4){
+                if((der[(short)(derOff+i)]&0xFF)>=0x80){
+                    // can't do hardened
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+            }
+        }
+        // if derLen is 0 -> just copy
+        if(derLen == (short)0){
+            Util.arrayCopyNonAtomic(hdKey, hdOff, out, outOff, HDKEY_LEN);
+            return HDKEY_LEN;
+        }
+        // fill depth
+        out[outOff] = (byte)(hdKey[hdOff]+(derLen/4));
+        // fill child index
+        Util.arrayCopyNonAtomic(out, (short)(outOff+HDKEY_INDEX_OFFSET), der, (short)(derOff+derLen-4), (short)4);
+        // derive
+        short len = (short)(65+20);
+        short off = heap.allocate(len);
+        // copy to heap
+        Util.arrayCopyNonAtomic(hdKey, (short)(hdOff+HDKEY_CHAINCODE_OFFSET), heap.buffer, off, (short)65);
+        // derive all but the last one
+        for(short i=0; i<(short)(derLen-4); i+=4){
+            if(isPrivate){
+                xprvChild(heap.buffer, off, 
+                          der, (short)(derOff+i), 
+                          heap.buffer, off);
+            }else{
+                xpubChild(heap.buffer, off, 
+                          der, (short)(derOff+i), 
+                          heap.buffer, off);
+            }
+        }
+        // derive last one
+        if(isPrivate){
+            xprvChild(heap.buffer, off, 
+                      der, (short)(derOff+derLen-4), 
+                      out, (short)(outOff+HDKEY_CHAINCODE_OFFSET));
+        }else{
+            xpubChild(heap.buffer, off, 
+                      der, (short)(derOff+derLen-4), 
+                      out, (short)(outOff+HDKEY_CHAINCODE_OFFSET));
+        }
+        // fill parent fingerprint
+        // if private - put public there instead
+        if(isPrivate){
+            Secp256k1.tempPrivateKey.setS(heap.buffer, (short)(off+33), (short)32);
+            Secp256k1.pubkeyCreate(Secp256k1.tempPrivateKey, true, heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET));
+        }
+        // calc hash160
+        Crypto.hash160(heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET), (short)33, 
+                       heap.buffer, (short)(off+65));
+        // copy first 4 bytes of the hash
+        Util.arrayCopyNonAtomic(heap.buffer, (short)(off+65), out, (short)(outOff+HDKEY_FINGERPRINT_OFFSET), (short)4);
+        heap.free(len);
+        return HDKEY_LEN;
+    }
     // TODO: refactor xprvChild and xpubChild to the same function
     //       - use arr[33] to detect if it's xpub or xprv
     // pass xprv without prefix i.e. <chaincode>0x00<prv>
