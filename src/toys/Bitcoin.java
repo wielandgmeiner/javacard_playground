@@ -119,10 +119,10 @@ public class Bitcoin{
         // if private - put public there instead
         if(isPrivate){
             Secp256k1.tempPrivateKey.setS(heap.buffer, (short)(off+33), (short)32);
-            Secp256k1.pubkeyCreate(Secp256k1.tempPrivateKey, true, heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET));
+            Secp256k1.pubkeyCreate(Secp256k1.tempPrivateKey, true, heap.buffer, (short)(off+32));
         }
         // calc hash160
-        Crypto.hash160(heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET), (short)33, 
+        Crypto.hash160(heap.buffer, (short)(off+32), (short)33, 
                        heap.buffer, (short)(off+65));
         // copy first 4 bytes of the hash
         Util.arrayCopyNonAtomic(heap.buffer, (short)(off+65), out, (short)(outOff+HDKEY_FINGERPRINT_OFFSET), (short)4);
