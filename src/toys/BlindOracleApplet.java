@@ -67,13 +67,15 @@ public class BlindOracleApplet extends SecureApplet{
     // data: <4-byte index><4-byte index>...<4-byte index>
     // can be empty - then root xpub will be returned
     private static final byte SUBCMD_BIP32_GET_XPUB              = (byte)0x01;
+    // sign using currently derived child key
+    private static final byte SUBCMD_BIP32_SIGN                  = (byte)0x02;
     // pass 32-byte hash to sign, then fingerprint of the xpub 
     // and array of 4-byte indexes to derive the key
     // If fingerprint is root fingerprint - it will derive key from root
     // If fingerprint is temp bip32 key fingerprint - it will derive from there
     // Otherwise will return errorcode
     // data: <32-byte message hash><4-byte fingerprint><4-byte index>...<4-byte index>
-    private static final byte SUBCMD_BIP32_DERIVE_AND_SIGN       = (byte)0x02;
+    private static final byte SUBCMD_BIP32_DERIVE_AND_SIGN       = (byte)0x03;
 
     private DataEntry mnemonic;
     private byte[] defaultSeed; // seed with empty password
@@ -159,13 +161,28 @@ public class BlindOracleApplet extends SecureApplet{
         buf[(short)(offset+1)] = (byte)0x00;
         switch (subcmd){
             case SUBCMD_BIP32_GET_XPUB:
-                // check if empty derivation
-                if(len==(short)2){
-                    Util.arrayCopyNonAtomic(rootXpub, (short)0, buf, (short)2, Bitcoin.HDKEY_LEN);
-                    return (short)(2+Bitcoin.HDKEY_LEN);
-                }else{
-                    return sendError(ERR_NOT_IMPLEMENTED, buf, offset);
+                // copy xprv
+                Util.arrayCopyNonAtomic(rootXpub, (short)0, childXpub, (short)0, Bitcoin.HDKEY_LEN);
+                childXpub[Bitcoin.HDKEY_FLAG_OFFSET] = (byte)0x00;
+                rootPrv.getS(childXpub, Bitcoin.HDKEY_PRV_KEY_OFFSET);
+                // derive child private key
+                Bitcoin.bip32Derive(childXpub, (short)0, 
+                                    buf, (short)(offset+2), (short)(len-2), 
+                                    childXpub, (short)0);
+                childPrv.setS(childXpub, Bitcoin.HDKEY_PRV_KEY_OFFSET, (short)32);
+                // replace private key with public
+                Secp256k1.pubkeyCreate(childPrv, true, childXpub, Bitcoin.HDKEY_PUB_KEY_OFFSET);
+                Util.arrayCopyNonAtomic(childXpub, (short)0, buf, (short)2, Bitcoin.HDKEY_LEN);
+                return (short)(2+Bitcoin.HDKEY_LEN);
+            case SUBCMD_BIP32_SIGN:
+                // TODO: check child key was derived
+                if(len!=34){
+                    return sendError(ERR_INVALID_LEN, buf, offset);
                 }
+                short sigLen = Secp256k1.sign(childPrv, 
+                                              buf, (short)(offset+2), 
+                                              buf, (short)(offset+2));
+                return (short)(2+sigLen);
             default:
                 return sendError(ERR_INVALID_SUBCMD, buf, offset);
         }
@@ -175,8 +192,12 @@ public class BlindOracleApplet extends SecureApplet{
         Bitcoin.xprvFromSeed(derivedSeed, (short)0, rootXpub, (short)0);
         // copy private key
         rootPrv.setS(rootXpub, Bitcoin.HDKEY_PRV_KEY_OFFSET, (short)32);
+        // child will be the same at first
+        childPrv.setS(rootXpub, Bitcoin.HDKEY_PRV_KEY_OFFSET, (short)32);
         // replace private key with public
         Secp256k1.pubkeyCreate(rootPrv, true, rootXpub, Bitcoin.HDKEY_PUB_KEY_OFFSET);
+        // child will be the same at first
+        Util.arrayCopyNonAtomic(rootXpub, (short)0, childXpub, (short)0, Bitcoin.HDKEY_LEN);
     }
     protected short processPlainMessage(byte[] msg, short msgOff, short msgLen){
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);

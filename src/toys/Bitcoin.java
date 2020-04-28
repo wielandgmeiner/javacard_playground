@@ -19,8 +19,8 @@ public class Bitcoin{
     public static final short SEED_LEN                 = (short)64;
     public static final short HDKEY_LEN                = (short)74;
     public static final short HDKEY_DEPTH_OFFSET       = (short)0;
-    public static final short HDKEY_INDEX_OFFSET       = (short)1;
-    public static final short HDKEY_FINGERPRINT_OFFSET = (short)5;
+    public static final short HDKEY_FINGERPRINT_OFFSET = (short)1;
+    public static final short HDKEY_INDEX_OFFSET       = (short)5;
     public static final short HDKEY_CHAINCODE_OFFSET   = (short)9;
     public static final short HDKEY_FLAG_OFFSET        = (short)41;
     public static final short HDKEY_PUB_KEY_OFFSET     = (short)41;
@@ -84,48 +84,54 @@ public class Bitcoin{
             Util.arrayCopyNonAtomic(hdKey, hdOff, out, outOff, HDKEY_LEN);
             return HDKEY_LEN;
         }
-        // fill depth
-        out[outOff] = (byte)(hdKey[hdOff]+(derLen/4));
-        // fill child index
-        Util.arrayCopyNonAtomic(out, (short)(outOff+HDKEY_INDEX_OFFSET), der, (short)(derOff+derLen-4), (short)4);
         // derive
-        short len = (short)(65+20);
+        short len = (short)(HDKEY_LEN+20);
         short off = heap.allocate(len);
         // copy to heap
-        Util.arrayCopyNonAtomic(hdKey, (short)(hdOff+HDKEY_CHAINCODE_OFFSET), heap.buffer, off, (short)65);
+        Util.arrayCopyNonAtomic(hdKey, hdOff, 
+                                heap.buffer, off, 
+                                HDKEY_LEN);
+        // fill depth
+        heap.buffer[(short)(off+HDKEY_DEPTH_OFFSET)] = (byte)(hdKey[(short)(hdOff+HDKEY_DEPTH_OFFSET)]+(derLen/4));
+        // fill child index
+        Util.arrayCopyNonAtomic(der, (short)(derOff+derLen-4), heap.buffer, (short)(off+HDKEY_INDEX_OFFSET), (short)4);
         // derive all but the last one
         for(short i=0; i<(short)(derLen-4); i+=4){
             if(isPrivate){
-                xprvChild(heap.buffer, off, 
+                xprvChild(heap.buffer, (short)(off+HDKEY_CHAINCODE_OFFSET), 
                           der, (short)(derOff+i), 
-                          heap.buffer, off);
+                          heap.buffer, (short)(off+HDKEY_CHAINCODE_OFFSET));
             }else{
-                xpubChild(heap.buffer, off, 
+                xpubChild(heap.buffer, (short)(off+HDKEY_CHAINCODE_OFFSET), 
                           der, (short)(derOff+i), 
-                          heap.buffer, off);
+                          heap.buffer, (short)(off+HDKEY_CHAINCODE_OFFSET));
             }
         }
-        // derive last one
+        // derive last one directly to output
         if(isPrivate){
-            xprvChild(heap.buffer, off, 
+            xprvChild(heap.buffer, (short)(off+HDKEY_CHAINCODE_OFFSET), 
                       der, (short)(derOff+derLen-4), 
                       out, (short)(outOff+HDKEY_CHAINCODE_OFFSET));
         }else{
-            xpubChild(heap.buffer, off, 
+            xpubChild(heap.buffer, (short)(off+HDKEY_CHAINCODE_OFFSET), 
                       der, (short)(derOff+derLen-4), 
                       out, (short)(outOff+HDKEY_CHAINCODE_OFFSET));
         }
-        // fill parent fingerprint
+        // copy to output
+        Util.arrayCopyNonAtomic(heap.buffer, off, 
+                                out, outOff, 
+                                HDKEY_CHAINCODE_OFFSET);
+        // calculate parent fingerprint
         // if private - put public there instead
         if(isPrivate){
-            Secp256k1.tempPrivateKey.setS(heap.buffer, (short)(off+33), (short)32);
-            Secp256k1.pubkeyCreate(Secp256k1.tempPrivateKey, true, heap.buffer, (short)(off+32));
+            Secp256k1.tempPrivateKey.setS(heap.buffer, (short)(off+HDKEY_PRV_KEY_OFFSET), (short)32);
+            Secp256k1.pubkeyCreate(Secp256k1.tempPrivateKey, true, heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET));
         }
         // calc hash160
-        Crypto.hash160(heap.buffer, (short)(off+32), (short)33, 
-                       heap.buffer, (short)(off+65));
+        Crypto.hash160(heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET), (short)33, 
+                       heap.buffer, (short)(off+HDKEY_LEN));
         // copy first 4 bytes of the hash
-        Util.arrayCopyNonAtomic(heap.buffer, (short)(off+65), out, (short)(outOff+HDKEY_FINGERPRINT_OFFSET), (short)4);
+        Util.arrayCopyNonAtomic(heap.buffer, (short)(off+HDKEY_LEN), out, (short)(outOff+HDKEY_FINGERPRINT_OFFSET), (short)4);
         heap.free(len);
         return HDKEY_LEN;
     }

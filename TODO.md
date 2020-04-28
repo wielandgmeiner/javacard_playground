@@ -3,6 +3,7 @@
 *Note* We should double-check the PIN as we don't trust proprietary stuff. Especially because it may be implemented poorly on different card models.
 We can encrypt all secret data in the card with a key derived from internal secret and the PIN code, so even if PIN check is bypassed secrets are invalid.
 
+- check buffer overwrites in functions - when output buffer is the same as input mb with an offset
 - reestablish SC without PIN lock
 - anti-tamper challenge -> 32-byte challenge -> sign with secret -> ecdsa signature
 - anti-tamper counter

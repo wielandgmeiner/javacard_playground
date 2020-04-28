@@ -26,6 +26,7 @@ public class SecureApplet extends Applet{
      * TODO: postUnlock(PIN) method override
      * TODO: postChangePIN(oldPIN, newPIN) method override
      * TODO: postLock()
+     # TODO: catch errors and transmit them over SC
      */
 
     // Get 32 random bytes
