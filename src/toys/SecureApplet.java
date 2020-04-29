@@ -22,11 +22,9 @@ public class SecureApplet extends Applet{
      * - processSecureMessage
      * - processPlainMessage
      *
-     * TODO: how to handle constructor?
-     * TODO: postUnlock(PIN) method override
+     * TODO: postUnlock(PIN) and preUnlock(PIN) methods override
      * TODO: postChangePIN(oldPIN, newPIN) method override
      * TODO: postLock()
-     # TODO: catch errors and transmit them over SC
      */
 
     // Get 32 random bytes
@@ -227,6 +225,8 @@ public class SecureApplet extends Applet{
             len = preprocessSecureMessage(msg, (short)0, len);
         // code can throw an exception and 
         // it will be transmitted over secure channel
+        // TODO: catch ISOException and transmit as is
+        //       for others - transmit general errorcode
         }catch(CardRuntimeException e){
             len = sendError(e.getReason(), msg, (short)0);
         }
