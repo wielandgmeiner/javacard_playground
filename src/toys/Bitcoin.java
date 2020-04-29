@@ -157,6 +157,9 @@ public class Bitcoin{
         }
         // add index
         Crypto.hmacSha512.doFinal(idx, idxOff, (short)4, buf, off);
+        if(FiniteField.isGreaterOrEqual(buf, off, Secp256k1.SECP256K1_R, (short)0) > 0){
+            ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+        }
         // TODO: check if result is less than N
         // tweaking by random number helps against DPA
         // generate random number

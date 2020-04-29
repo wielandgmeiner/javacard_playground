@@ -55,8 +55,9 @@ public class MemoryCardApplet extends SecureApplet{
         if(buf[offset] == CMD_STORAGE){
             return processStorageCommand(buf, offset, len);
         }else{
-            return sendError(ERR_INVALID_CMD, buf, offset);
+            ISOException.throwIt(ERR_INVALID_CMD);
         }
+        return (short)2;
     }
     protected short processPlainMessage(byte[] msg, short msgOff, short msgLen){
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -64,7 +65,8 @@ public class MemoryCardApplet extends SecureApplet{
     }
     private short processStorageCommand(byte[] buf, short offset, short len){
         if(isLocked()){
-            return sendError(ERR_CARD_LOCKED, buf, offset);
+            ISOException.throwIt(ERR_CARD_LOCKED);
+            return (short)2;
         }
         byte subcmd = buf[(short)(offset+1)];
         buf[offset] = (byte)0x90;
@@ -77,7 +79,8 @@ public class MemoryCardApplet extends SecureApplet{
                 secretData.put(buf, (short)2, (short)(len-2));
                 return (short)2;
             default:
-                return sendError(ERR_INVALID_SUBCMD, buf, offset);
+                ISOException.throwIt(ERR_INVALID_SUBCMD);
         }
+        return (short)2;
     }
 }

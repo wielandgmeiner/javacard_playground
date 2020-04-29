@@ -109,7 +109,8 @@ public class SecureApplet extends Applet{
     // return number of bytes written in the buffer
     // you can write starting from offset 0
     protected short processSecureMessage(byte[] buf, short offset, short len){
-        return sendError(ERR_INVALID_CMD, buf, offset);
+        ISOException.throwIt(ERR_INVALID_CMD);
+        return (short)2;
     }
     // redefine this function in your applet to handle plaintext message
     // return number of bytes written in the buffer
@@ -190,6 +191,7 @@ public class SecureApplet extends Applet{
         // check if data length is ok
         if(msgLen != (short)97){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            return (short)0;
         }
         // will put nonce there
         short len = SecureChannel.establishSharedSecret(msg, msgOff, false, msg, (short)0);
@@ -205,6 +207,7 @@ public class SecureApplet extends Applet{
         // check if data length is ok
         if(msgLen != (byte)65){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            return (short)0;
         }
         // for consistency with se mode
         SecureChannel.establishSharedSecret(msg, msgOff, true, msg, (short)0);
@@ -218,30 +221,39 @@ public class SecureApplet extends Applet{
     }
     private short handleSecureMessage(byte[] msg, short msgOff, short msgLen){
         short len = SecureChannel.decryptMessage(msg, msgOff, msgLen, msg, (short)0);
-        // processes message and returns len of the responce to send back to host
-        // responce is placed back to the same buffer
-        len = preprocessSecureMessage(msg, (short)0, len);
+        try{
+            // processes message and returns len of the responce to send back to host
+            // responce is placed back to the same buffer
+            len = preprocessSecureMessage(msg, (short)0, len);
+        // code can throw an exception and 
+        // it will be transmitted over secure channel
+        }catch(CardRuntimeException e){
+            len = sendError(e.getReason(), msg, (short)0);
+        }
         // return len;
         // encrypt buffer and send to the host
         return SecureChannel.encryptMessage(msg, (short)0, len, msg, (short)0);
     }
     private short preprocessSecureMessage(byte[] buf, short offset, short len){
         if(len < 2){
-            return sendError(ERR_INVALID_LEN, buf, offset);
+            ISOException.throwIt(ERR_INVALID_LEN);
+            return (short)2;
         }
         switch (buf[offset]){
             case CMD_ECHO:
                 if(buf[(short)(offset+1)] == SUBCMD_DEFAULT){
                     return sendEcho(buf, offset, len);
                 }else{
-                    return sendError(ERR_INVALID_SUBCMD, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_SUBCMD);
                 }
+                return (short)2;
             case CMD_RAND:
                 if(buf[(short)(offset+1)] == SUBCMD_DEFAULT){
                     return sendSecRand(buf, offset, len);
                 }else{
-                    return sendError(ERR_INVALID_SUBCMD, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_SUBCMD);
                 }
+                return (short)2;
             case CMD_PIN:
                 return processPinCommand(buf, offset, len);
             default:
@@ -271,20 +283,25 @@ public class SecureApplet extends Applet{
                 if(pinIsSet){
                     if(!pin.isValidated()){
                         if(len > (short)(PIN_MAX_LENGTH+2)){
-                            return sendError(ERR_INVALID_LEN, buf, offset);
+                            ISOException.throwIt(ERR_INVALID_LEN);
+                            return (short)2;
                         }
                         if(pin.getTriesRemaining() == 0){
-                            return sendError(ERR_NO_ATTEMPTS_LEFT, buf, offset);
+                            ISOException.throwIt(ERR_NO_ATTEMPTS_LEFT);
+                            return (short)2;
                         }
                         if(!pin.check(buf, (short)(offset+2), (byte)(len-2))){
-                            return sendError(ERR_INVALID_PIN, buf, offset);
+                            ISOException.throwIt(ERR_INVALID_PIN);
+                            return (short)2;
                         }
                     }else{
-                        return sendError(ERR_ALREADY_UNLOCKED, buf, offset);
+                        ISOException.throwIt(ERR_ALREADY_UNLOCKED);
+                        return (short)2;
                     }
                 }else{
                     if(len > (short)(PIN_MAX_LENGTH+2)){
-                        return sendError(ERR_INVALID_LEN, buf, offset);
+                        ISOException.throwIt(ERR_INVALID_LEN);
+                        return (short)2;
                     }
                     // TODO: wrap in transaction
                     pin.update(buf, (short)(offset+2), (byte)(len-2));
@@ -296,44 +313,54 @@ public class SecureApplet extends Applet{
                     pin.reset();
                 }else{
                     // already locked
-                    return sendError(ERR_CARD_LOCKED, buf, offset);
+                    ISOException.throwIt(ERR_CARD_LOCKED);
+                    return (short)2;
                 }
                 return (short)2;
             case SUBCMD_PIN_CHANGE:
                 // check data lengths
                 if(len < (short)4){
-                    return sendError(ERR_INVALID_LEN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_LEN);
+                    return (short)2;
                 }
                 short len_old = Util.makeShort((byte)0, buf[(short)(offset+2)]);
                 if(len_old > (short)PIN_MAX_LENGTH){
-                    return sendError(ERR_INVALID_LEN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_LEN);
+                    return (short)2;
                 }
                 if(len < (short)(4+len_old)){
-                    return sendError(ERR_INVALID_LEN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_LEN);
+                    return (short)2;
                 }
                 short len_new = Util.makeShort((byte)0, buf[(short)(offset+3+len_old)]);
                 if(len_new > (short)PIN_MAX_LENGTH){
-                    return sendError(ERR_INVALID_LEN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_LEN);
+                    return (short)2;
                 }
                 if(len != (short)(4+len_old+len_new)){
-                    return sendError(ERR_INVALID_LEN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_LEN);
+                    return (short)2;
                 }
 
                 if(!pinIsSet){
-                    return sendError(ERR_NOT_INITIALIZED, buf, offset);
+                    ISOException.throwIt(ERR_NOT_INITIALIZED);
+                    return (short)2;
                 }
                 if(!pin.isValidated()){
-                    return sendError(ERR_CARD_LOCKED, buf, offset);
+                    ISOException.throwIt(ERR_CARD_LOCKED);
+                    return (short)2;
                 }
                 if(!pin.check(buf, (short)(offset+3), (byte)len_old)){
-                    return sendError(ERR_INVALID_PIN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_PIN);
+                    return (short)2;
                 }else{
                     pin.update(buf, (short)(offset+4+len_old), buf[(short)(offset+3+len_old)]);
                 }
                 return (short)2;
             default:
-                return sendError(ERR_INVALID_SUBCMD, buf, offset);
+                ISOException.throwIt(ERR_INVALID_SUBCMD);
         }
+        return (short)2;
     }
     private short getPinStatus(byte[] buf, short offset){
         if(!pinIsSet){

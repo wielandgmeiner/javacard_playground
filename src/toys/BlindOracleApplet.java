@@ -117,7 +117,8 @@ public class BlindOracleApplet extends SecureApplet{
     protected short processSecureMessage(byte[] buf, short offset, short len){
         // you need to unlock the card with the PIN first
         if(isLocked()){
-            return sendError(ERR_CARD_LOCKED, buf, offset);
+            ISOException.throwIt(ERR_CARD_LOCKED);
+            return (short)2;
         }
         switch(buf[offset]){
             case CMD_SEED:
@@ -125,8 +126,9 @@ public class BlindOracleApplet extends SecureApplet{
             case CMD_BIP32:
                 return processBip32Command(buf, offset, len);
             default:
-                return sendError(ERR_INVALID_CMD, buf, offset);
+                ISOException.throwIt(ERR_INVALID_CMD);
         }
+        return (short)2;
     }
     protected short processSeedCommand(byte[] buf, short offset, short len){
         byte subcmd = buf[(short)(offset+1)];
@@ -136,7 +138,8 @@ public class BlindOracleApplet extends SecureApplet{
             case SUBCMD_SEED_SET_DEFAULT_SEED:
                 // check it's 64 bytes
                 if(len!=(short)(66)){
-                    return sendError(ERR_INVALID_LEN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_LEN);
+                    return (short)2;
                 }
                 // copy to defaulSeed
                 Util.arrayCopy(buf, (short)(offset+2), defaultSeed, (short)0, (short)64);
@@ -148,11 +151,13 @@ public class BlindOracleApplet extends SecureApplet{
                     deriveRoot();
                     return (short)2;
                 }else{
-                    return sendError(ERR_NOT_IMPLEMENTED, buf, offset);
+                    ISOException.throwIt(ERR_NOT_IMPLEMENTED);
+                    return (short)2;
                 }
             default:
-                return sendError(ERR_INVALID_SUBCMD, buf, offset);
+                ISOException.throwIt(ERR_INVALID_SUBCMD);
         }
+        return (short)2;
     }
     // TODO: check if seed is loaded
     protected short processBip32Command(byte[] buf, short offset, short len){
@@ -177,15 +182,17 @@ public class BlindOracleApplet extends SecureApplet{
             case SUBCMD_BIP32_SIGN:
                 // TODO: check child key was derived
                 if(len!=34){
-                    return sendError(ERR_INVALID_LEN, buf, offset);
+                    ISOException.throwIt(ERR_INVALID_LEN);
+                    return (short)2;
                 }
                 short sigLen = Secp256k1.sign(childPrv, 
                                               buf, (short)(offset+2), 
                                               buf, (short)(offset+2));
                 return (short)(2+sigLen);
             default:
-                return sendError(ERR_INVALID_SUBCMD, buf, offset);
+                ISOException.throwIt(ERR_INVALID_SUBCMD);
         }
+        return (short)2;
     }
     protected void deriveRoot(){
         // first derive xprv

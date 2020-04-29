@@ -81,12 +81,14 @@ public class SingleUseKeyApplet extends SecureApplet{
         if(buf[offset] == CMD_SINGLE_USE_KEY){
             return processSingleUseKeyCommand(buf, offset, len);
         }else{
-            return sendError(ERR_INVALID_CMD, buf, offset);
+            ISOException.throwIt(ERR_INVALID_CMD);
         }
+        return (short)2;
     }
     private short processSingleUseKeyCommand(byte[] buf, short offset, short len){
         if(isLocked()){
-            return sendError(ERR_CARD_LOCKED, buf, offset);
+            ISOException.throwIt(ERR_CARD_LOCKED);
+            return (short)2;
         }
         byte subcmd = buf[(short)(offset+1)];
         buf[offset] = (byte)0x90;
@@ -106,8 +108,9 @@ public class SingleUseKeyApplet extends SecureApplet{
                 generateRandomKey();
                 return (short)(2+len);
             default:
-                return sendError(ERR_INVALID_SUBCMD, buf, offset);
+                ISOException.throwIt(ERR_INVALID_SUBCMD);
         }
+        return (short)2;
     }
     private void generateRandomKey(){
         Secp256k1.generateRandomSecret(tempBuf, (short)0);

@@ -1,65 +1,41 @@
 # ToDo
 
 *Note* We should double-check the PIN as we don't trust proprietary stuff. Especially because it may be implemented poorly on different card models.
+
 We can encrypt all secret data in the card with a key derived from internal secret and the PIN code, so even if PIN check is bypassed secrets are invalid.
 
 - check buffer overwrites in functions - when output buffer is the same as input mb with an offset
 - reestablish SC without PIN lock
 - anti-tamper challenge -> 32-byte challenge -> sign with secret -> ecdsa signature
 - anti-tamper counter
-- ripemd160 lib? - we need it for xpub fingerprints, but it's not must-have
+- ripemd160 - we need it for xpub fingerprints, but it's not must-have. Currently using Ledger lib => license is tricky
+- transaction parsing and signing - screw legacy, use segwit only
+
+# Transaction signing
+
+To calculate hash for signing we need transaction context:
+- version: 4 bytes
+- hash_prevouts: 32 bytes, in: num_inp * (32 txid + 4 index)
+- hash_sequence: 32 bytes, in: num_inp * 4
+- hash_outputs:  32 bytes, in: num_outs * (<=33 script_pubkey, 8 value)
+- locktime: 4 bytes
 
 # Helper functions
 
-- TransientStack or something with reserve(short) and release(short) methods
 - Available features - check what algorithms are available and use them
 
 # Math
 
 Several important things to implement:
-- bip39 mnemonic + password to seed:
-  - pbkdf2-hmac-sha512, maybe only limited to 64 byte output
-- bip32 private key derivation:
-  - hmac-sha512
-  - field element modulo addition
-  - have to be sidechannel resistant
-- bip32 public key derivation:
-  - hmac-sha512
-  - point addition
+- [ ] bip39 mnemonic + password to seed:
+  - [x] pbkdf2-hmac-sha512, limited to 64 byte output
+- [x] bip32 private key derivation:
+- [x] bip32 public key derivation:
 
 pbkdf2-hmac-sha512:
   - sha512 is supported
-  - hmac is already implement for arbitrary hash functions
-  - pbkdf2 with 64-byte out can be implemented easily
-  - it's increadibly slow (74 seconds), so makes sense to use it only if we really-really-really need it. Otherwise default seed with empty password can be cached and used.
-
-```py
-# https://en.wikipedia.org/wiki/PBKDF2
-# for 64-byte output can be simplified further
-def pbkdf2_hmac_sha512(password, salt, iterations:int, bytes_to_read:int):
-    # xor two arrays
-    def binxor(a, b):
-        return bytes([x ^ y for (x, y) in zip(a, b)])
-    # convert to bytes
-    if isinstance(password, str):
-        password = password.encode('utf-8')
-    if isinstance(salt, str):
-        salt = salt.encode('utf-8')
-    # result
-    r = b''
-    # no need in the loop if bytes_to_read <= 64
-    # just set i = 1
-    for i in range(1,bytes_to_read//64+1+int(bool(bytes_to_read%64))):
-        U = hmac.new(password, salt + i.to_bytes(4,'big'), digestmod=hashlib.sha512).digest()
-        result = U
-        for j in range(2, 1+iterations):
-            U = hmac.new(password, U, digestmod=hashlib.sha512).digest()
-            result = binxor(result, U)
-        r += result
-    return r[:bytes_to_read]
-```
-
-
+  - hmac is implement for arbitrary hash functions
+  - due to 2048 rounds this algorithm is increadibly slow (70 seconds), so makes sense to use it only if we really-really-really need it. Otherwise default seed with empty password can be cached and used.
 
 # Secure communication
 
