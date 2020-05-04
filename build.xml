@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project basedir="." default="toys" name="JavaCardPlayground build">
+<project basedir="." default="all" name="JavaCardPlayground build">
   <!-- Applet building dependencies -->
   <property name="JC211" value="sdks/jc211_kit"/>
   <property name="JC212" value="sdks/jc212_kit"/>
@@ -8,27 +8,64 @@
   <property name="JC303" value="sdks/jc303_kit"/>
   <property name="JC304" value="sdks/jc304_kit"/>
   <property name="JC305" value="sdks/jc305u3_kit"/>
+  <property name="JCKIT" value="${JC304}"/>
+
+  <property name="src.dir"    value="src/main/java"/>
+  <property name="build.dir"  value="build"/>
+  <property name="cap.dir"    value="${build.dir}/cap"/>
+  <property name="class.dir"  value="${build.dir}/classes"/>
 
   <!-- ant-javacard task from javacard.pro -->
   <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ant-javacard.jar"/>
   <!-- All included applets -->
-  <target name="toys">
-    <javacard jckit="${JC304}">
-      <cap output="TeapotApplet.cap" sources="src/toys">
+  <target name="Teapot" depends="init">
+    <javacard jckit="${JCKIT}">
+      <cap output="${cap.dir}/TeapotApplet.cap" sources="${src.dir}/toys" classes="${class.dir}">
         <applet class="toys.TeapotApplet" aid="B00B5111CA01"/>
       </cap>
-      <cap output="MemoryCardApplet.cap" sources="src/toys">
+    </javacard>
+  </target>
+  <target name="MemoryCardApplet" depends="init">
+    <javacard jckit="${JCKIT}">
+      <cap output="${cap.dir}/MemoryCardApplet.cap" sources="${src.dir}/toys" classes="${class.dir}">
         <applet class="toys.MemoryCardApplet" aid="B00B5111CB01"/>
       </cap>
-      <cap output="CalculatorApplet.cap" sources="src/toys">
+    </javacard>
+  </target>
+  <target name="Calculator" depends="init">
+    <javacard jckit="${JCKIT}">
+      <cap output="${cap.dir}/CalculatorApplet.cap" sources="${src.dir}/toys" classes="${class.dir}">
         <applet class="toys.CalculatorApplet" aid="B00B5111CC01"/>
       </cap>
-      <cap output="SingleUseKeyApplet.cap" sources="src/toys">
+    </javacard>
+  </target>
+  <target name="SingleUseKey" depends="init">
+    <javacard jckit="${JCKIT}">
+      <cap output="${cap.dir}/SingleUseKeyApplet.cap" sources="${src.dir}/toys" classes="${class.dir}">
         <applet class="toys.SingleUseKeyApplet" aid="B00B5111CD01"/>
       </cap>
-      <cap output="BlindOracleApplet.cap" sources="src/toys">
+    </javacard>
+  </target>
+  <target name="BlindOracle" depends="init">
+    <javacard jckit="${JCKIT}">
+      <cap output="${cap.dir}/BlindOracleApplet.cap" sources="${src.dir}/toys" classes="${class.dir}">
         <applet class="toys.BlindOracleApplet" aid="B00B5111CE01"/>
       </cap>
     </javacard>
   </target>
+
+  <target name="all" depends="Teapot,MemoryCardApplet,Calculator,SingleUseKey,BlindOracle"/>
+
+  <target name="init">
+    <mkdir dir="${build.dir}"/>
+    <mkdir dir="${cap.dir}"/>
+    <mkdir dir="${class.dir}"/>
+  </target>
+
+  <target name="clean">
+    <delete dir="${build.dir}"/>
+  </target>
+
+  <target name="clean-build" depends="clean,all"/>
+
 </project>
