@@ -54,10 +54,22 @@ alias gp="java -jar $PWD/gp.jar"
 Run to compile all applets:
 
 ```sh
-ant toys
+ant all
 ```
 
-You should get `.cap` files for all the applets in the root folder.
+You should get `.cap` files for all the applets in the build/cap folder.
+
+Run to compile a specific applet:
+
+```sh
+ant Teapot
+```
+
+To see the build targets:
+
+```sh
+ant -projecthelp
+```
 
 Now upload applet to the card:
 
