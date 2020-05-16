@@ -74,7 +74,7 @@ ant -projecthelp
 Now upload applet to the card:
 
 ```sh
-gp -install TeapotApplet.cap
+gp -install build/cap/TeapotApplet.cap
 ```
 
 Check that it appeared in the list of applets (should appear with aid `B00B5111CA01`):
