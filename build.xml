@@ -25,7 +25,7 @@
       </cap>
     </javacard>
   </target>
-  <target name="MemoryCardApplet" depends="init">
+  <target name="MemoryCard" depends="init">
     <javacard jckit="${JCKIT}">
       <cap output="${cap.dir}/MemoryCardApplet.cap" sources="${src.dir}/toys" classes="${class.dir}">
         <applet class="toys.MemoryCardApplet" aid="B00B5111CB01"/>
@@ -54,7 +54,7 @@
     </javacard>
   </target>
 
-  <target name="all" depends="Teapot,MemoryCardApplet,Calculator,SingleUseKey,BlindOracle"/>
+  <target name="all" depends="Teapot,MemoryCard,Calculator,SingleUseKey,BlindOracle"/>
 
   <target name="init">
     <mkdir dir="${build.dir}"/>

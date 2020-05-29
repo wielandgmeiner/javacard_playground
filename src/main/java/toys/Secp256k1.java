@@ -209,12 +209,12 @@ public class Secp256k1 {
      * Writes x-coordinate of the point multiplication result to the output buffer.
      *
      * @param privateKey the scalar in a private key object
-     * @param point the point to multiply
+     * @param point the byte array containing a point to multiply in uncompressed form 04<x><y> (65 bytes)
      * @param pointOffset the offset of the point
-     * @param pointLen the length of the point
-     * @param out the output buffer
-     * @param outOffset the offset in the output buffer
-     * @return the length of the data written in the out buffer
+     * @param pointLen the length of the point - should be 65
+     * @param out the output buffer to write x-coordinate of the product
+     * @param outOffset the offset in the output buffer to start from
+     * @return the length of the data written in the out buffer (should be 65)
      */
     static public short ecdh(
                     ECPrivateKey privateKey, 

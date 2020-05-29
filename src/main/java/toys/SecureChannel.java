@@ -22,8 +22,8 @@ public class SecureChannel{
     static private boolean sessionIsTransient = false;
 
     static private byte sharedSecret[];
-    static final private byte CARD_PREFIX[] = { (byte)'c', (byte)'a', (byte)'r', (byte)'d' };
-    static final private byte HOST_PREFIX[] = { (byte)'h', (byte)'o', (byte)'s', (byte)'t' };
+    static final private byte CARD_PREFIX[] = { 'c', 'a', 'r', 'd' };
+    static final private byte HOST_PREFIX[] = { 'h', 'o', 's', 't' };
     static private AESKey cardKey;
     static private AESKey hostKey;
     static private byte iv[];

@@ -31,7 +31,7 @@ Example: `B0A1000000` -> returns stored data
 | CLA    | `0xB0`                                   |
 | INS    | `0xA2`                                   |
 | P0, P1 | ignored, use for example `0x00` for both |
-| DATA   | data to store on the card, `64` bytes max  |
+| DATA   | data to store on the card, `255` bytes max  |
 | RETURN | `SW`: `0x9000`, `DATA`: updated data stored on the card |
 | ERRORS | `SW`: `0x6700` (`ISO7816.SW_WRONG_LENGTH`) if data is more than `255` bytes |
 
