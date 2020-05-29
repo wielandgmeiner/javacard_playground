@@ -15,14 +15,13 @@ public class HMACDigest {
     static final short ALG_SHA_256_BLOCK_SIZE = (short)64;
     static final short ALG_SHA_512_BLOCK_SIZE = (short)128;
 
-    // TODO: use stack
     private MessageDigest hash; // hash function
-    private byte[] key;         // FIXME: should be a Key
-    private byte[] intBuf;      // temp buffer for internal use
+    private byte[] key;         // buffer to store the HMAC key
+    private byte[] intBuf;      // temp buffer for internal usage
     private short blockSize;    // block size of the hash function
 
     /**
-     * Allocates stuff.
+     * Constructor. Allocates stuff.
      *
      * @param digestAlgo instance of hash function (MessageDigest)
      * @param blocksize  length of the block, for example:
@@ -39,16 +38,17 @@ public class HMACDigest {
 
     /**
      * Initializes HMAC with a key
-     * @param hmacKey buffer with the key for HMAC
-     * @param offset  offset position of the key in the buffer
-     * @param len     length of the key
+     * @param hmacKey - buffer with the key for HMAC
+     * @param offset  - offset position of the key in the buffer
+     * @param len     - length of the key
      */
     public void init(byte[] hmacKey, short offset, short len){
+        // fill key with zeroes
+        Util.arrayFillNonAtomic(key, (short)0, blockSize, (byte)0x00);
         if(len > blockSize) {
             hash.reset();
             hash.doFinal(hmacKey, offset, len, key, (short)0);
         }else{
-            Util.arrayFillNonAtomic(key, (short)0, blockSize, (byte)0);
             Util.arrayCopyNonAtomic(hmacKey, offset, key, (short)0, len);
         }
         for(short i = (short)0; i < blockSize; i++) {
@@ -60,9 +60,9 @@ public class HMACDigest {
 
     /**
      * Updates HMAC with a message
-     * @param msg     buffer with the message
-     * @param offset  offset position of the msg in the buffer
-     * @param len     length of the msg
+     * @param msg     - buffer with the message
+     * @param offset  - offset position of the msg in the buffer
+     * @param len     - length of the msg
      */
     public void update(byte[] msg, short offset, short len){
         hash.update(msg, offset, len);
@@ -79,11 +79,11 @@ public class HMACDigest {
 
     /**
      * Finalizes HMAC with a message
-     * @param msg     buffer with the message
-     * @param offset  offset position of the msg in the buffer
-     * @param len     length of the msg
-     * @param outBuf  buffer to put result in
-     * @param outOffset offset for the output buffer
+     * @param msg       - buffer with the message
+     * @param offset    - offset position of the msg in the buffer
+     * @param len       - length of the msg
+     * @param outBuf    - buffer to put result in
+     * @param outOffset - offset for the output buffer
      *
      * @return number of bytes written to outBuf
      */

@@ -131,9 +131,9 @@ public class Secp256k1 {
 
         byte sign = (byte)(0x02+(point[(short)(pOff+64)]&0x01));
         // because maybe it's the same buffer...
-        Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, (short)0, (short)32);
+        Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, off, (short)32);
         out[outOff] = sign;
-        Util.arrayCopyNonAtomic(buf, (short)0, out, (short)(outOff+1), (short)32);
+        Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+1), (short)32);
         heap.free(len);
         return (short)33;
     }

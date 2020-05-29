@@ -1,6 +1,6 @@
 package toys;
 
-import javacard.framework.Util;
+import javacard.framework.*;
 
 /**
  * A class to store variable length data in EEPROM.
@@ -29,9 +29,12 @@ public class DataEntry{
      * Class constructor. Allocates enough memory in EEPROM to store data.
      * @param maxSize - size that will be allocated for storage. 
      *                  Defines the maximum length of the data that we can store.
+     * @throws ISOException if maxSize is negative.
      */
-    public DataEntry(short maxSize){
-        // if maxSize < 0 -> throw error
+    public DataEntry(short maxSize) throws ISOException{
+        if(maxSize < 0){
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        }
         bufferMaxLength = maxSize;
         buffer = new byte[maxSize];
     }
@@ -40,14 +43,14 @@ public class DataEntry{
      * @param data   - byte array with data to store
      * @param offset - start position of the data in the buffer
      * @param len    - length of the data
-     * @return number of bytes stored. Should be equal to len. 0 if data is too large.
+     * @return number of bytes stored. 
+     * @throws ISOException if data is larger than capacity.
      */
-    public short put(byte[] data, short offset, short len){
+    public short put(byte[] data, short offset, short len) throws ISOException{
         if(len > bufferMaxLength){
-            return 0;
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
         wipe();
-        bufferLength = (short)0;
         Util.arrayCopy(data, offset, buffer, (short)0, len);
         bufferLength = len;
         return bufferLength;
@@ -71,10 +74,9 @@ public class DataEntry{
     public short maxLength(){
         return bufferMaxLength;
     }
-    /**
-     * Overwrites the content of the internal buffer with zeroes
-     */
+    /** Overwrites the content of the internal buffer with zeroes */
     public void wipe(){
         Util.arrayFillNonAtomic(buffer, (short)0, bufferMaxLength, (byte)0x00);
+        bufferLength = (short)0;
     }
 }

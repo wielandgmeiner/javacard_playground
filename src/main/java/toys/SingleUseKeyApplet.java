@@ -4,7 +4,6 @@ package toys;
 // import using java card API interface.
 import javacard.framework.*;
 import javacard.security.*;
-import javacardx.crypto.Cipher;
 
 /* 
  * Package: toys

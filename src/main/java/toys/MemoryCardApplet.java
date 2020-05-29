@@ -3,8 +3,6 @@ package toys;
 
 // import using java card API interface.
 import javacard.framework.*;
-import javacard.security.*;
-import javacardx.crypto.Cipher;
 
 /* 
  * Package: toys
@@ -13,17 +11,12 @@ import javacardx.crypto.Cipher;
  */
 public class MemoryCardApplet extends SecureApplet{
 
-    // Define the value of CLA/INS in APDU, you can also define P1, P2.
-    private static final byte CLA_MEMORYCARD            = (byte)0xB0;
-
     // Max storage
     private static final short MAX_DATA_LENGTH         = (short)255;
 
     // commands transmitted over secure channel
     // 0x00 - 0x04 are reserved
     private static final byte CMD_STORAGE             = (byte)0x05;
-
-    private static final byte SUBCMD_DEFAULT          = (byte)0x00;
     // storage
     private static final byte SUBCMD_STORAGE_GET      = (byte)0x00;
     private static final byte SUBCMD_STORAGE_PUT      = (byte)0x01;

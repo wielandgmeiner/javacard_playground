@@ -2,7 +2,6 @@
 package toys;
 
 import javacard.framework.*;
-import javacard.security.*;
 
 /* 
  * Package: toys

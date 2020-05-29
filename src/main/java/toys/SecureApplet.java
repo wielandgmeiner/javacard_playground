@@ -3,8 +3,6 @@ package toys;
 
 // import using java card API interface.
 import javacard.framework.*;
-import javacard.security.*;
-import javacardx.crypto.Cipher;
 
 /* 
  * Package: toys
@@ -27,38 +25,42 @@ public class SecureApplet extends Applet{
      * TODO: postLock()
      */
 
-    // Get 32 random bytes
-    private static final byte INS_GET_RANDOM            = (byte)0xB1;
+    /** Instruction to get 32 random bytes, without secure channel */
+    private static final byte INS_GET_RANDOM                  = (byte)0xB1;
 
     /* Secure channel stuff */
-    // Get EC public key for ECDH key agreement
-    // Static. Host should compare with a known one
-    private static final byte INS_GET_CARD_PUBKEY       = (byte)0xB2;
-    // secret will be ECDH(Card Static, Host Ephimerial)  
-    private static final byte INS_SET_HOST_PUBKEY       = (byte)0xB3;
-    // secret will be ECDH(Card Ephimerial, Host Ephimerial)
-    private static final byte INS_SET_HOST_GET_EPH      = (byte)0xB4;
-    private static final byte INS_SECURE_MESSAGE        = (byte)0xB5;
-    private static final byte INS_CLOSE_CHANNEL         = (byte)0xB6;
+    /** Instruction to get static card's public key for ECDH key agreement */
+    private static final byte INS_GET_CARD_PUBKEY             = (byte)0xB2;
+    /** 
+     * Instruction to establish secure channel in ES mode - 
+     * ephemeral key from the host, static key from the card. */
+    private static final byte INS_OPEN_SECURE_CHANNEL_SS_MODE = (byte)0xB3;
+    /** 
+     * Instruction to establish secure channel in EE mode - 
+     * ephemeral keys are used both on the host and on the card. */
+    private static final byte INS_OPEN_SECURE_CHANNEL_ES_MODE = (byte)0xB4;
+    /** 
+     * Instruction to establish secure channel in EE mode - 
+     * ephemeral keys are used both on the host and on the card. */
+    private static final byte INS_OPEN_SECURE_CHANNEL_EE_MODE = (byte)0xB5;
+    private static final byte INS_SECURE_MESSAGE              = (byte)0xB6;
+    private static final byte INS_CLOSE_CHANNEL               = (byte)0xB7;
 
-    private static final byte PIN_MAX_LENGTH           = (byte)32;
-    private static final byte PIN_MAX_COUNTER          = (byte)10;
-
-    // commands transmitted over secure channel
-    private static final byte CMD_ECHO                = (byte)0x00;
-    private static final byte CMD_RAND                = (byte)0x01;
-    private static final byte CMD_PHISH               = (byte)0x02;
-    private static final byte CMD_PIN                 = (byte)0x03;
-    private static final byte CMD_WIPE                = (byte)0x04;
+    /* Commands transmitted over secure channel */
+    private static final byte CMD_ECHO                 = (byte)0x00;
+    private static final byte CMD_RAND                 = (byte)0x01;
+    private static final byte CMD_PHISH                = (byte)0x02;
+    private static final byte CMD_PIN                  = (byte)0x03;
+    private static final byte CMD_WIPE                 = (byte)0x04;
     // TODO: reestablish cahnnel without PIN lock
     // private static final byte CMD_REESTABLISH_SC      = (byte)0x06;
 
-    protected static final byte SUBCMD_DEFAULT          = (byte)0x00;
+    protected static final byte SUBCMD_DEFAULT         = (byte)0x00;
     // pin
-    private static final byte SUBCMD_PIN_STATUS       = (byte)0x00;
-    private static final byte SUBCMD_PIN_UNLOCK       = (byte)0x01;
-    private static final byte SUBCMD_PIN_LOCK         = (byte)0x02;
-    private static final byte SUBCMD_PIN_CHANGE       = (byte)0x03;
+    private static final byte SUBCMD_PIN_STATUS        = (byte)0x00;
+    private static final byte SUBCMD_PIN_UNLOCK        = (byte)0x01;
+    private static final byte SUBCMD_PIN_LOCK          = (byte)0x02;
+    private static final byte SUBCMD_PIN_CHANGE        = (byte)0x03;
 
     // status
     protected static final byte STATUS_PIN_NOT_SET      = (byte)0x00;
@@ -78,11 +80,16 @@ public class SecureApplet extends Applet{
     protected static final short ERR_NOT_INITIALIZED    = (short)0x0505;
     protected static final short RESPONSE_SUCCESS       = (short)0x9000;
 
+    /* PIN constants */
+    private static final byte PIN_MAX_LENGTH            = (byte)32;
+    private static final byte PIN_MAX_COUNTER           = (byte)10;
+    
     private OwnerPIN pin;
     // mb better to do via GP somehow?
     private boolean pinIsSet = false;
 
     protected TransientHeap heap;
+    protected SecureChannel sc;
 
     // Create an instance of the Applet subclass using its constructor, 
     // and to register the instance.
@@ -99,7 +106,7 @@ public class SecureApplet extends Applet{
         FiniteField.init(heap);
         Secp256k1.init(heap);
         Crypto.init(heap);
-        SecureChannel.init(heap);
+        sc = new SecureChannel(heap);
 
         pin = new OwnerPIN(PIN_MAX_COUNTER, PIN_MAX_LENGTH);
     }
@@ -131,7 +138,6 @@ public class SecureApplet extends Applet{
         // Receive incoming data
         // might be limited by the apdu buffer
         // but should work fine with messages up to 255 bytes
-        // TODO: refactor for extended length APDUs
         byte[] buf = apdu.getBuffer();
         short dataLen = apdu.getIncomingLength();
         short dataOff = ISO7816.OFFSET_CDATA;
@@ -143,9 +149,9 @@ public class SecureApplet extends Applet{
         case INS_GET_CARD_PUBKEY:
             // The APDU format can be "B0 A1 P1 P2 Lc Data Le", 
             // such as "B0A10000" or "B0A101020311223300".
-            len = sendCardPubkey(buf, dataOff, dataLen);
+            len = sendCardPubkey(buf, (short)0);
             break;
-        case INS_SET_HOST_PUBKEY:
+        case INS_OPEN_SECURE_CHANNEL_ES_MODE:
             // this one uses random key from host and
             // static key from card - simple key agreement
 
@@ -155,7 +161,7 @@ public class SecureApplet extends Applet{
             }
             len = setHostPubkey(buf, dataOff, dataLen);
             break;
-        case INS_SET_HOST_GET_EPH:
+        case INS_OPEN_SECURE_CHANNEL_EE_MODE:
             // this one uses random keys from both parties
             // more secure, but probably uses EEPROM :(
 
@@ -172,7 +178,7 @@ public class SecureApplet extends Applet{
             len = sendRandom(buf, dataOff, dataLen);
             break;
         case INS_CLOSE_CHANNEL:
-            SecureChannel.closeChannel();
+            sc.closeChannel();
             break;
         default:
             len = processPlainMessage(buf, dataOff, dataLen);
@@ -182,8 +188,8 @@ public class SecureApplet extends Applet{
     /**
      * Puts unique public key of the card to the message buffer
      */
-    private short sendCardPubkey(byte[] msg, short msgOff, short msgLen){
-        return SecureChannel.serializeStaticPubkey(msg, (short)0);
+    private short sendCardPubkey(byte[] buf, short off){
+        return sc.serializeStaticPublicKey(buf, off);
     }
     private short setHostPubkey(byte[] msg, short msgOff, short msgLen){
         // check if data length is ok
@@ -192,13 +198,13 @@ public class SecureApplet extends Applet{
             return (short)0;
         }
         // will put nonce there
-        short len = SecureChannel.establishSharedSecret(msg, msgOff, false, msg, (short)0);
+        short len = sc.establishSharedSecret(msg, msgOff, SecureChannel.MODE_ES, msg, (short)0);
         // get hash of the shared secret and put it to the buffer
-        len += SecureChannel.getSharedHash(msg, len);
+        len += sc.getSharedFingerprint(msg, len);
         // add hmac using shared secret
-        len += SecureChannel.authenticateData(msg, (short)0, len, msg, len);
+        len += sc.authenticateData(msg, (short)0, len, msg, len);
         // add signature with static pubkey
-        len += SecureChannel.signData(msg, (short)0, len, msg, len);
+        len += sc.signData(msg, (short)0, len, msg, len);
         return len;
     }
     private short setHostGetEphimerial(byte[] msg, short msgOff, short msgLen){
@@ -208,17 +214,17 @@ public class SecureApplet extends Applet{
             return (short)0;
         }
         // for consistency with se mode
-        SecureChannel.establishSharedSecret(msg, msgOff, true, msg, (short)0);
+        sc.establishSharedSecret(msg, msgOff, SecureChannel.MODE_EE, msg, (short)0);
         // get session pubkey and put it to the buffer
-        short len = SecureChannel.serializeSessionPubkey(msg, (short)0);
+        short len = sc.serializeSessionPubkey(msg, (short)0);
         // add hmac using shared secret
-        len += SecureChannel.authenticateData(msg, (short)0, len, msg, len);
+        len += sc.authenticateData(msg, (short)0, len, msg, len);
         // add signature with static pubkey
-        len += SecureChannel.signData(msg, (short)0, len, msg, len);
+        len += sc.signData(msg, (short)0, len, msg, len);
         return len;
     }
     private short handleSecureMessage(byte[] msg, short msgOff, short msgLen){
-        short len = SecureChannel.decryptMessage(msg, msgOff, msgLen, msg, (short)0);
+        short len = sc.decryptMessage(msg, msgOff, msgLen, msg, (short)0);
         try{
             // processes message and returns len of the responce to send back to host
             // responce is placed back to the same buffer
@@ -232,7 +238,7 @@ public class SecureApplet extends Applet{
         }
         // return len;
         // encrypt buffer and send to the host
-        return SecureChannel.encryptMessage(msg, (short)0, len, msg, (short)0);
+        return sc.encryptMessage(msg, (short)0, len, msg, (short)0);
     }
     private short preprocessSecureMessage(byte[] buf, short offset, short len){
         if(len < 2){
