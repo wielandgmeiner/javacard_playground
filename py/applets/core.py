@@ -118,7 +118,7 @@ class SecureAppletBase(AppletBase):
         if mode=="ee":
             data = bytes([65])+secp256k1.ec_pubkey_serialize(host_pub, secp256k1.EC_UNCOMPRESSED)
             # get ephimerial pubkey from the card
-            res = self.request("B0B40000"+data.hex())
+            res = self.request("B0B50000"+data.hex())
             pub = secp256k1.ec_pubkey_parse(res[:65])
             secp256k1.ec_pubkey_tweak_mul(pub, secret)
             shared_secret = secp256k1.ec_pubkey_serialize(pub)[1:33]
@@ -147,7 +147,7 @@ class SecureAppletBase(AppletBase):
             pub = secp256k1.ec_pubkey_parse(secp256k1.ec_pubkey_serialize(self.card_pubkey))
             secp256k1.ec_pubkey_tweak_mul(pub, secret)
             shared_secret = secp256k1.ec_pubkey_serialize(pub)[1:33]
-            res = self.request("B0B30000"+data.hex())
+            res = self.request("B0B40000"+data.hex())
             nonce_card = res[:32]
             secrets_hash = res[32:36]
             recv_hmac = res[36:68]
@@ -216,7 +216,7 @@ class SecureAppletBase(AppletBase):
         if self.iv >= 2**16:
             self.establish_secure_channel()
         ct = self.encrypt(data)
-        res = self.request("B0B50000"+(bytes([len(ct)])+ct).hex())
+        res = self.request("B0B60000"+(bytes([len(ct)])+ct).hex())
         plaintext = self.decrypt(res)
         self.iv += 1
         if plaintext[:2] == b'\x90\x00':
@@ -225,7 +225,7 @@ class SecureAppletBase(AppletBase):
             raise RuntimeError("Card returned secure error with code %r and data %r" % (plaintext[:2].hex(), plaintext[2:]))
 
     def close_secure_channel(self):
-        self.request("B0B6000000")
+        self.request("B0B7000000")
 
     def echo(self, data):
         return self.secure_request(b'\x00\x00'+data)

@@ -81,15 +81,15 @@ If you are out of sync for some reason just re-establish secure channel. If `iv`
 
 ### Establish secure channel in ES mode
 
-Returns `<32-byte card nonce> | SHA256(host_key | card_key) | HMAC-SHA256(card_key, data)`.
+Returns `<32-byte card nonce> | SHA256(secret)[:4] | HMAC-SHA256(card_key, data) | ECDSA_SIGNATURE`.
 
 | Field  | Value                                    |
 | ------ | ---------------------------------------- |
 | CLA    | `0xB0`                                   |
 | INS    | `0xB3`                                   |
 | P0, P1 | ignored, use for example `0x00` for both |
-| DATA   | 65-byte public key of the host serialized in uncompressed form |
-| RETURN | `SW`: `0x9000`, `DATA`: 64 bytes - `SHA256(host_key | card_key)` followed by `HMAC-SHA256(card_key, data)` |
+| DATA   | 65-byte public key of the host serialized in uncompressed form followed by a 32-byte host nonce |
+| RETURN | `SW`: `0x9000`, `DATA`: `<32-byte card nonce> | SHA256(secret)[:4] | HMAC-SHA256(card_key, data) | ECDSA_SIGNATURE` |
 
 ### Establish secure channel in EE mode
 

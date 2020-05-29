@@ -12,7 +12,7 @@ import javacard.framework.*;
 public class SecureApplet extends Applet{
 
     /*
-     * Plaintext instruction codes INS from 0xB1 to 0xB6 are reserved
+     * Plaintext instruction codes INS from 0xB1 to 0xB7 are reserved
      * Encrypted command codes     CMD from 0x00 to 0x04 are reserved
      * see below what they do
      *
@@ -36,7 +36,7 @@ public class SecureApplet extends Applet{
      * ephemeral key from the host, static key from the card. */
     private static final byte INS_OPEN_SECURE_CHANNEL_SS_MODE = (byte)0xB3;
     /** 
-     * Instruction to establish secure channel in EE mode - 
+     * Instruction to establish secure channel in ES mode - 
      * ephemeral keys are used both on the host and on the card. */
     private static final byte INS_OPEN_SECURE_CHANNEL_ES_MODE = (byte)0xB4;
     /** 
