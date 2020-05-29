@@ -1,4 +1,3 @@
-/* Do what the fuck you want license. */
 package toys;
 
 // import using java card API interface.

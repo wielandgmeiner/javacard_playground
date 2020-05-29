@@ -1,4 +1,3 @@
-/* Do what the fuck you want license. */
 package toys;
 
 // import using java card API interface.
@@ -41,8 +40,6 @@ public class SecureChannel{
      * We reduce it to 15 bytes to increase data capacity. 
      */
     static final public short MAC_SIZE = (short)15;
-    /** size of the output of HMAC algorithm */
-    static final public short FULL_HMAC_SIZE = (short)32;
     /** Size of the IV for AES */
     static final public short IV_SIZE = (short)16;
     /** Size of the fingerprint */
@@ -159,7 +156,7 @@ public class SecureChannel{
         // derive AES and MAC keys
         deriveKeys();
         // now we can set iv counter to zero
-        Util.arrayFillNonAtomic(iv, (short)0, IV_SIZE, (byte)0);
+        Util.arrayFillNonAtomic(iv, (short)0, (short)iv.length, (byte)0);
         return outLen;
     }
     /**
@@ -173,7 +170,7 @@ public class SecureChannel{
         Crypto.sha256.reset();
         Crypto.sha256.update(CARD_PREFIX, (short)0, (short)CARD_PREFIX.length);
         Crypto.sha256.update(AES_PREFIX, (short)0, (short)AES_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, SHARED_SECRET_SIZE, heap.buffer, off);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, heap.buffer, off);
         cardAESKey.setKey(heap.buffer, off);
 
         // host AES key
@@ -187,13 +184,13 @@ public class SecureChannel{
         Crypto.sha256.reset();
         Crypto.sha256.update(CARD_PREFIX, (short)0, (short)CARD_PREFIX.length);
         Crypto.sha256.update(MAC_PREFIX, (short)0, (short)MAC_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, SHARED_SECRET_SIZE, cardMACKey, (short)0);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, cardMACKey, (short)0);
 
         // host MAC key
         Crypto.sha256.reset();
         Crypto.sha256.update(HOST_PREFIX, (short)0, (short)HOST_PREFIX.length);
         Crypto.sha256.update(MAC_PREFIX, (short)0, (short)MAC_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, SHARED_SECRET_SIZE, hostMACKey, (short)0);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, hostMACKey, (short)0);
 
         heap.free(len);
     }
@@ -214,7 +211,7 @@ public class SecureChannel{
      */
     public short authenticateData(byte[] data, short dataOffset, short dataLen, 
                                          byte[] out, short outOffset){
-        Crypto.hmacSha256.init(cardMACKey, (short)0, MAC_KEY_SIZE);
+        Crypto.hmacSha256.init(cardMACKey, (short)0, (short)cardMACKey.length);
         Crypto.hmacSha256.doFinal(data, dataOffset, dataLen, out, outOffset);
         return (short)32;
     }
@@ -236,7 +233,7 @@ public class SecureChannel{
      */
     public short signData(byte[] data, short dataOffset, short dataLen, 
                                  byte[] out, short outOffset){
-        short len = FULL_HMAC_SIZE;
+        short len = (short)Crypto.sha256.getLength();
         short off = heap.allocate(len);
 
         Crypto.sha256.reset();
@@ -253,11 +250,11 @@ public class SecureChannel{
      */
     public short getSharedFingerprint(byte[] buf, short offset){
         // sending first 4 bytes of sha256(shared secret)
-        short len = (short)32;
+        short len = (short)Crypto.sha256.getLength();
         short off = heap.allocate(len);
 
         Crypto.sha256.reset();
-        Crypto.sha256.doFinal(sharedSecret, (short)0, SHARED_SECRET_SIZE, heap.buffer, off);
+        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, heap.buffer, off);
         Util.arrayCopyNonAtomic(heap.buffer, off, buf, offset, FINGERPRINT_LEN);
         heap.free(len);
         return FINGERPRINT_LEN;
@@ -287,8 +284,8 @@ public class SecureChannel{
         }
         short dataLen = (short)(ctLen-hmacLen);
         // calculate expected hmac
-        Crypto.hmacSha256.init(hostMACKey, (short)0, MAC_KEY_SIZE);
-        Crypto.hmacSha256.update(iv, (short)0, IV_SIZE);
+        Crypto.hmacSha256.init(hostMACKey, (short)0, (short)hostMACKey.length);
+        Crypto.hmacSha256.update(iv, (short)0, (short)iv.length);
         Crypto.hmacSha256.doFinal(ct, ctOffset, dataLen, heap.buffer, off);
         // check hmac is correct
         if(Util.arrayCompare(heap.buffer, off, ct, (short)(ctOffset+dataLen),hmacLen)!=(byte)0){
@@ -297,7 +294,7 @@ public class SecureChannel{
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
         // decrypt using current iv value
-        Crypto.cipher.init(hostAESKey, Cipher.MODE_DECRYPT, iv, (short)0, IV_SIZE);
+        Crypto.cipher.init(hostAESKey, Cipher.MODE_DECRYPT, iv, (short)0, (short)iv.length);
         short plainLen = Crypto.cipher.doFinal(ct, ctOffset, dataLen, heap.buffer, off);
         Util.arrayCopyNonAtomic(heap.buffer, off, out, outOffset, plainLen);
         heap.free(len);
@@ -318,14 +315,18 @@ public class SecureChannel{
             // ciphertext + hmac wont fit in 256 bytes...
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
-        short len = (short)255;
-        short off = heap.allocate(len);
+        short len = (short)(iv.length+255);
+        short ivOffOld = heap.allocate(len);
+        short off = (short)(ivOffOld + iv.length);
+        // copy IV value to temp buffer and increase IV
+        Util.arrayCopyNonAtomic(iv, (short)0, heap.buffer, ivOffOld, (short)iv.length);
+        increaseIV();
 
-        Crypto.cipher.init(cardAESKey, Cipher.MODE_ENCRYPT, iv, (short)0, (short)16);
+        Crypto.cipher.init(cardAESKey, Cipher.MODE_ENCRYPT, heap.buffer, ivOffOld, (short)iv.length);
         short ctLen = Crypto.cipher.doFinal(data, offset, dataLen, heap.buffer, off);
         Util.arrayCopyNonAtomic(heap.buffer, off, cyphertext, ctOffset, ctLen);
-        Crypto.hmacSha256.init(cardMACKey, (short)0, MAC_KEY_SIZE);
-        Crypto.hmacSha256.update(iv, (short)0, IV_SIZE);
+        Crypto.hmacSha256.init(cardMACKey, (short)0, (short)cardMACKey.length);
+        Crypto.hmacSha256.update(heap.buffer, ivOffOld, (short)iv.length);
         Crypto.hmacSha256.doFinal(cyphertext, ctOffset, ctLen, heap.buffer, off);
         short hmacLen = (short)32;
         // if we are hitting the limit
@@ -333,14 +334,13 @@ public class SecureChannel{
             hmacLen = (short)31;
         }
         Util.arrayCopyNonAtomic(heap.buffer, off, cyphertext, (short)(ctOffset+ctLen), hmacLen);
-        increaseIV();
         heap.free(len);
         return (short)(ctLen+hmacLen);
     }
     /** Increases IV by 1 */
     private void increaseIV(){
         short carry = 1;
-        for(short i=15; i>=0; i--){
+        for(short i=(short)(iv.length-1); i>=0; i--){
             carry += (iv[i]&0xFF);
             iv[i] = (byte)carry;
             carry >>= 8;
@@ -358,10 +358,10 @@ public class SecureChannel{
     public void closeChannel(){
         // fill with random data to make sure that
         // nobody can talk to the card anymore
-        Crypto.random.generateData(iv, (short)0, IV_SIZE);
-        Crypto.random.generateData(hostMACKey, (short)0, MAC_KEY_SIZE);
-        Crypto.random.generateData(cardMACKey, (short)0, MAC_KEY_SIZE);
-        Crypto.random.generateData(sharedSecret, (short)0, SHARED_SECRET_SIZE);
+        Crypto.random.generateData(iv, (short)0, (short)iv.length);
+        Crypto.random.generateData(hostMACKey,   (short)0, (short)hostMACKey.length);
+        Crypto.random.generateData(cardMACKey,   (short)0, (short)cardMACKey.length);
+        Crypto.random.generateData(sharedSecret, (short)0, (short)sharedSecret.length);
 
         // we generate random data to the heap temp buffer and
         // reuse this buffer to set this random data as AES keys

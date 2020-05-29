@@ -1,29 +1,50 @@
-/* Do what the fuck you want license. */
 package toys;
 
 // import using java card API interface.
 import javacard.framework.*;
 
-/* 
- * Package: toys
- * Filename: SecureApplet.java 
- * Class: SecureApplet
+/**
+ * A base secure applet that includes a PIN code and secure communication channel.
+ * <p>
+ * It registeres a set of APDU commands to establish secure channel,
+ * to receive secure message and to manage the PIN code.
+ * <p>
+ * In derived applet define the following functions:
+ * <ul>
+ * <li> {@code processPlainMessage}  - to process any non-encrypted messages
+ * <li> {@code processSecureMessage} - to process any encrypted message 
+ *                             (data passed to this function is already decrypted and verified)
+ * <li> TODO: {@code postUnlock(PIN)} and {@code preUnlock(PIN)} - methods is called before and after PIN is verified.
+ * <li> TODO: {@code postChangePIN(oldPIN, newPIN)} - method is called when PIN is changed
+ * <li> TODO: {@code postLock()} - method is called when card is locked.
+ * <p>
+ * Plaintext instruction codes INS from 0xB1 to 0xB7 are reserved for secure channel:
+ * <ul>
+ * <li>{@code B1} - returns 32 bytes of random data from built-in RNG
+ * <li>{@code B2} - returns a static public key for key agreement. 
+ *                        Serialized, uncompressed (65-bytes, {@code <04><x><y>})
+ * <li>TODO: {@code B3} - Establishes secure channel in SS mode.
+ * <li>{@code B4} - Establishes secure channel in ES mode. 
+ *                  Card uses static key, host should send ephemeral key.
+ * <li>{@code B5} - Establishes secure channel in EE mode. 
+ *                  Both the card and the host use ephemeral key.
+ * <li>{@code B6} - Process secure message.
+ * <li>{@code B7} - Close secure channel.
+ * <p>
+ * Encrypted command codes CMD from 0x00 to 0x04 are reserved 
+ * for PIN code management and a few other commands:
+ * <ul>
+ * <li>{@code 00} - echo back what was sent to the card. Useful to check secure channel.
+ * <li>{@code 01} - send 32 bytes of random data over secure channel. 
+ *                  Useful to get some extra entropy for key generation on the host.
+ * <li>TODO: {@code 02} - authenticate data with internal secret.
+ *                  Can be used to generate anti-phishing byte sequence while user is entering 
+ *                  the PIN code to proof to the user that the card was not replaced.
+ * <li>{@code 03} - PIN management commands.
+ * <li>TODO: {@code 04} - Reestablish channel without locking the card (just rotate keys).
+ * <li>TODO: {@code 05} - Wipe everything on the card. 
  */
 public class SecureApplet extends Applet{
-
-    /*
-     * Plaintext instruction codes INS from 0xB1 to 0xB7 are reserved
-     * Encrypted command codes     CMD from 0x00 to 0x04 are reserved
-     * see below what they do
-     *
-     * In your applet define functions:
-     * - processSecureMessage
-     * - processPlainMessage
-     *
-     * TODO: postUnlock(PIN) and preUnlock(PIN) methods override
-     * TODO: postChangePIN(oldPIN, newPIN) method override
-     * TODO: postLock()
-     */
 
     /** Instruction to get 32 random bytes, without secure channel */
     private static final byte INS_GET_RANDOM                  = (byte)0xB1;
@@ -31,36 +52,32 @@ public class SecureApplet extends Applet{
     /* Secure channel stuff */
     /** Instruction to get static card's public key for ECDH key agreement */
     private static final byte INS_GET_CARD_PUBKEY             = (byte)0xB2;
-    /** 
-     * Instruction to establish secure channel in ES mode - 
-     * ephemeral key from the host, static key from the card. */
+    /** Instruction to establish secure channel in ES mode - 
+     *  ephemeral key from the host, static key from the card. */
     private static final byte INS_OPEN_SECURE_CHANNEL_SS_MODE = (byte)0xB3;
-    /** 
-     * Instruction to establish secure channel in ES mode - 
-     * ephemeral keys are used both on the host and on the card. */
+    /** Instruction to establish secure channel in ES mode - 
+     *  ephemeral keys are used both on the host and on the card. */
     private static final byte INS_OPEN_SECURE_CHANNEL_ES_MODE = (byte)0xB4;
-    /** 
-     * Instruction to establish secure channel in EE mode - 
-     * ephemeral keys are used both on the host and on the card. */
+    /** Instruction to establish secure channel in EE mode - 
+     *  ephemeral keys are used both on the host and on the card. */
     private static final byte INS_OPEN_SECURE_CHANNEL_EE_MODE = (byte)0xB5;
     private static final byte INS_SECURE_MESSAGE              = (byte)0xB6;
     private static final byte INS_CLOSE_CHANNEL               = (byte)0xB7;
 
     /* Commands transmitted over secure channel */
-    private static final byte CMD_ECHO                 = (byte)0x00;
-    private static final byte CMD_RAND                 = (byte)0x01;
-    private static final byte CMD_PHISH                = (byte)0x02;
-    private static final byte CMD_PIN                  = (byte)0x03;
-    private static final byte CMD_WIPE                 = (byte)0x04;
-    // TODO: reestablish cahnnel without PIN lock
-    // private static final byte CMD_REESTABLISH_SC      = (byte)0x06;
+    private static final byte CMD_ECHO                  = (byte)0x00;
+    private static final byte CMD_RAND                  = (byte)0x01;
+    private static final byte CMD_AUTH                  = (byte)0x02;
+    private static final byte CMD_PIN                   = (byte)0x03;
+    private static final byte CMD_REESTABLISH_SC        = (byte)0x04;
+    private static final byte CMD_WIPE                  = (byte)0x05;
 
-    protected static final byte SUBCMD_DEFAULT         = (byte)0x00;
+    protected static final byte SUBCMD_DEFAULT          = (byte)0x00;
     // pin
-    private static final byte SUBCMD_PIN_STATUS        = (byte)0x00;
-    private static final byte SUBCMD_PIN_UNLOCK        = (byte)0x01;
-    private static final byte SUBCMD_PIN_LOCK          = (byte)0x02;
-    private static final byte SUBCMD_PIN_CHANGE        = (byte)0x03;
+    private static final byte SUBCMD_PIN_STATUS         = (byte)0x00;
+    private static final byte SUBCMD_PIN_UNLOCK         = (byte)0x01;
+    private static final byte SUBCMD_PIN_LOCK           = (byte)0x02;
+    private static final byte SUBCMD_PIN_CHANGE         = (byte)0x03;
 
     // status
     protected static final byte STATUS_PIN_NOT_SET      = (byte)0x00;
@@ -107,20 +124,19 @@ public class SecureApplet extends Applet{
         Secp256k1.init(heap);
         Crypto.init(heap);
         sc = new SecureChannel(heap);
-
         pin = new OwnerPIN(PIN_MAX_COUNTER, PIN_MAX_LENGTH);
     }
-    // redefine this function in your applet to process secure message
-    // return number of bytes written in the buffer
-    // you can write starting from offset 0
+    /** Redefine this function in your applet to process secure message
+     *  return number of bytes written in the buffer
+     *  you can write starting from offset 0 */
     protected short processSecureMessage(byte[] buf, short offset, short len){
         ISOException.throwIt(ERR_INVALID_CMD);
         return (short)2;
     }
-    // redefine this function in your applet to handle plaintext message
-    // return number of bytes written in the buffer
-    // you can write starting from offset 0
-    // WARNING: no secure channel means MITM attack possibility
+    /** Redefine this function in your applet to handle plaintext message
+     *  return number of bytes written in the buffer
+     *  you can write starting from offset 0
+     *  WARNING: no secure channel means MITM attack possibility */
     protected short processPlainMessage(byte[] msg, short msgOff, short msgLen){
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         return 0;
@@ -144,11 +160,10 @@ public class SecureApplet extends Applet{
         apdu.setIncomingAndReceive();
 
         short len = 0;
+        // TODO: check CLA to be 0xB0?
         // Dispatch INS in APDU.
         switch (buf[ISO7816.OFFSET_INS]){
         case INS_GET_CARD_PUBKEY:
-            // The APDU format can be "B0 A1 P1 P2 Lc Data Le", 
-            // such as "B0A10000" or "B0A101020311223300".
             len = sendCardPubkey(buf, (short)0);
             break;
         case INS_OPEN_SECURE_CHANNEL_ES_MODE:
@@ -156,9 +171,7 @@ public class SecureApplet extends Applet{
             // static key from card - simple key agreement
 
             // first - lock the card to avoid active MITM
-            if(pinIsSet && pin.isValidated()){
-                pin.reset();
-            }
+            lock();
             len = setHostPubkey(buf, dataOff, dataLen);
             break;
         case INS_OPEN_SECURE_CHANNEL_EE_MODE:
@@ -166,28 +179,40 @@ public class SecureApplet extends Applet{
             // more secure, but probably uses EEPROM :(
 
             // first - lock the card to avoid active MITM
-            if(pinIsSet && pin.isValidated()){
-                pin.reset();
-            }
+            lock();
             len = setHostGetEphimerial(buf, dataOff, dataLen);
             break;
         case INS_SECURE_MESSAGE:
-            len = handleSecureMessage(buf, dataOff, dataLen);
+            // Try to handle secure message
+            // Only secure channel exceptions will get here
+            // as internal exceptions are caught and transmitted
+            // over secure channel
+            try {
+                len = handleSecureMessage(buf, dataOff, dataLen);
+            } catch (CardRuntimeException e) {
+                // something is wrong with secure channel
+                // so we close channel and lock the card
+                sc.closeChannel();
+                lock();
+                // reraise
+                ISOException.throwIt(e.getReason());
+            }
             break;
         case INS_GET_RANDOM:
             len = sendRandom(buf, dataOff, dataLen);
             break;
         case INS_CLOSE_CHANNEL:
+            // close secure channel
             sc.closeChannel();
+            // lock the card
+            lock();
             break;
         default:
             len = processPlainMessage(buf, dataOff, dataLen);
         }
         apdu.setOutgoingAndSend((short)0, len);
     }
-    /**
-     * Puts unique public key of the card to the message buffer
-     */
+    /** Puts unique public key of the card to the message buffer */
     private short sendCardPubkey(byte[] buf, short off){
         return sc.serializeStaticPublicKey(buf, off);
     }
@@ -315,50 +340,35 @@ public class SecureApplet extends Applet{
                 }
                 return (short)2;
             case SUBCMD_PIN_LOCK:
-                if(pin.isValidated()){
-                    pin.reset();
-                }else{
-                    // already locked
-                    ISOException.throwIt(ERR_CARD_LOCKED);
-                    return (short)2;
-                }
+                lock();
                 return (short)2;
             case SUBCMD_PIN_CHANGE:
                 // check data lengths
                 if(len < (short)4){
                     ISOException.throwIt(ERR_INVALID_LEN);
-                    return (short)2;
                 }
                 short len_old = Util.makeShort((byte)0, buf[(short)(offset+2)]);
                 if(len_old > (short)PIN_MAX_LENGTH){
                     ISOException.throwIt(ERR_INVALID_LEN);
-                    return (short)2;
                 }
                 if(len < (short)(4+len_old)){
                     ISOException.throwIt(ERR_INVALID_LEN);
-                    return (short)2;
                 }
                 short len_new = Util.makeShort((byte)0, buf[(short)(offset+3+len_old)]);
                 if(len_new > (short)PIN_MAX_LENGTH){
                     ISOException.throwIt(ERR_INVALID_LEN);
-                    return (short)2;
                 }
                 if(len != (short)(4+len_old+len_new)){
                     ISOException.throwIt(ERR_INVALID_LEN);
-                    return (short)2;
                 }
-
                 if(!pinIsSet){
                     ISOException.throwIt(ERR_NOT_INITIALIZED);
-                    return (short)2;
                 }
                 if(!pin.isValidated()){
                     ISOException.throwIt(ERR_CARD_LOCKED);
-                    return (short)2;
                 }
                 if(!pin.check(buf, (short)(offset+3), (byte)len_old)){
                     ISOException.throwIt(ERR_INVALID_PIN);
-                    return (short)2;
                 }else{
                     pin.update(buf, (short)(offset+4+len_old), buf[(short)(offset+3+len_old)]);
                 }
@@ -367,6 +377,12 @@ public class SecureApplet extends Applet{
                 ISOException.throwIt(ERR_INVALID_SUBCMD);
         }
         return (short)2;
+    }
+    /** Locks the card */
+    protected void lock(){
+        if(pinIsSet && pin.isValidated()){
+            pin.reset();
+        }
     }
     private short getPinStatus(byte[] buf, short offset){
         if(!pinIsSet){
