@@ -8,6 +8,8 @@ import os, hashlib, hmac
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
+from io import BytesIO
+
 def get_reader():
     """Returns first found reader """
     rarr=readers()
@@ -101,6 +103,13 @@ class SecureAppletBase(AppletBase):
         self.card_pubkey = secp256k1.ec_pubkey_parse(sec)
         return self.card_pubkey
 
+    def derive_keys(self, shared_secret):
+        self.host_aes_key = hashlib.sha256(b'host_aes'+shared_secret).digest()
+        self.card_aes_key = hashlib.sha256(b'card_aes'+shared_secret).digest()
+        self.host_mac_key = hashlib.sha256(b'host_mac'+shared_secret).digest()
+        self.card_mac_key = hashlib.sha256(b'card_mac'+shared_secret).digest()
+        return hashlib.sha256(shared_secret).digest()[:4]
+
     def establish_secure_channel(self, mode=None):
         # save mode for later - i.e. reestablish secure channel
         if mode is None:
@@ -119,25 +128,25 @@ class SecureAppletBase(AppletBase):
             data = bytes([65])+secp256k1.ec_pubkey_serialize(host_pub, secp256k1.EC_UNCOMPRESSED)
             # get ephimerial pubkey from the card
             res = self.request("B0B50000"+data.hex())
-            pub = secp256k1.ec_pubkey_parse(res[:65])
+            s = BytesIO(res)
+            data = s.read(65)
+            pub = secp256k1.ec_pubkey_parse(data)
             secp256k1.ec_pubkey_tweak_mul(pub, secret)
             shared_secret = secp256k1.ec_pubkey_serialize(pub)[1:33]
-            self.host_aes_key = hashlib.sha256(b'host_aes'+shared_secret).digest()
-            self.card_aes_key = hashlib.sha256(b'card_aes'+shared_secret).digest()
-            self.host_mac_key = hashlib.sha256(b'host_mac'+shared_secret).digest()
-            self.card_mac_key = hashlib.sha256(b'card_mac'+shared_secret).digest()
-            shared_fingerprint = hashlib.sha256(shared_secret).digest()[:4]
-            recv_hmac = res[65:97]
+            shared_fingerprint = self.derive_keys(shared_secret)
+            recv_hmac = s.read(15)
             h = hmac.new(self.card_mac_key, digestmod='sha256')
-            h.update(res[:65])
-            expected_hmac = h.digest()
+            h.update(data)
+            expected_hmac = h.digest()[:15]
             if expected_hmac != recv_hmac:
                 raise RuntimeError("Wrong HMAC. Got %s, expected %s"%(recv_hmac.hex(),expected_hmac.hex()))
-            sig = secp256k1.ecdsa_signature_parse_der(res[97:])
+            data += recv_hmac
+            raw_sig = s.read()
+            sig = secp256k1.ecdsa_signature_parse_der(raw_sig)
             # in case card doesn't follow low s rule (but it should)
             sig = secp256k1.ecdsa_signature_normalize(sig)
-            if not secp256k1.ecdsa_verify(sig, hashlib.sha256(res[:97]).digest(), self.card_pubkey):
-                raise RuntimeError("Signature is invalid: %r", res[97:].hex())
+            if not secp256k1.ecdsa_verify(sig, hashlib.sha256(data).digest(), self.card_pubkey):
+                raise RuntimeError("Signature is invalid: %r", raw_sig.hex())
         # se mode - use our ephimerial key with card's static key
         else:
             nonce_host = os.urandom(32)
@@ -148,26 +157,25 @@ class SecureAppletBase(AppletBase):
             secp256k1.ec_pubkey_tweak_mul(pub, secret)
             shared_secret = secp256k1.ec_pubkey_serialize(pub)[1:33]
             res = self.request("B0B40000"+data.hex())
-            nonce_card = res[:32]
-            secrets_hash = res[32:36]
-            recv_hmac = res[36:68]
+            s = BytesIO(res)
+            nonce_card = s.read(32)
+            recv_fingerprint = s.read(4)
+            recv_hmac = s.read(15)
             secret_with_nonces = hashlib.sha256(shared_secret+nonce_host+nonce_card).digest()
-            self.host_aes_key = hashlib.sha256(b'host_aes'+secret_with_nonces).digest()
-            self.card_aes_key = hashlib.sha256(b'card_aes'+secret_with_nonces).digest()
-            self.host_mac_key = hashlib.sha256(b'host_mac'+secret_with_nonces).digest()
-            self.card_mac_key = hashlib.sha256(b'card_mac'+secret_with_nonces).digest()
-            shared_hash = hashlib.sha256(secret_with_nonces).digest()[:4]
-            if shared_hash != secrets_hash:
-                print("Wrong hash of secrets: %s - %s" % (shared_hash.hex(), secrets_hash.hex()))
+            shared_fingerprint = self.derive_keys(secret_with_nonces)
+            if shared_fingerprint != recv_fingerprint:
+                print("Wrong hash of secrets: %s - %s" % (shared_fingerprint.hex(), recv_fingerprint.hex()))
+            data = nonce_card + recv_fingerprint
             h = hmac.new(self.card_mac_key, digestmod='sha256')
-            h.update(res[:36])
-            expected_hmac = h.digest()
+            h.update(data)
+            expected_hmac = h.digest()[:15]
             if expected_hmac != recv_hmac:
                 raise RuntimeError("Wrong HMAC. Got %s, expected %s"%(recv_hmac.hex(),expected_hmac.hex()))
-            sig = secp256k1.ecdsa_signature_parse_der(res[68:])
+            data += recv_hmac
+            sig = secp256k1.ecdsa_signature_parse_der(s.read())
             # in case card doesn't follow low s rule (but it should)
             sig = secp256k1.ecdsa_signature_normalize(sig)
-            if not secp256k1.ecdsa_verify(sig, hashlib.sha256(res[:68]).digest(), self.card_pubkey):
+            if not secp256k1.ecdsa_verify(sig, hashlib.sha256(data).digest(), self.card_pubkey):
                 raise RuntimeError("Signature is invalid")
         # reset iv
         self.iv = 0
@@ -186,20 +194,18 @@ class SecureAppletBase(AppletBase):
         h = hmac.new(self.host_mac_key, digestmod='sha256')
         h.update(iv)
         h.update(ct)
-        hmac_len = 31 if len(ct)+32 == 256 else 32
-        ct += h.digest()[:hmac_len]
+        ct += h.digest()[:15]
         return ct
     
     def decrypt(self, ct):
-        hmac_len = 31 if len(ct)==255 else 32
-        recv_hmac = ct[-hmac_len:]
-        ct = ct[:-hmac_len]
+        recv_hmac = ct[-15:]
+        ct = ct[:-15]
         iv = self.iv.to_bytes(16, 'big')
         h = hmac.new(self.card_mac_key, digestmod='sha256')
         h.update(iv)
         h.update(ct)
-        expected_hmac = h.digest()
-        if expected_hmac[:hmac_len] != recv_hmac:
+        expected_hmac = h.digest()[:15]
+        if expected_hmac != recv_hmac:
             raise RuntimeError("Wrong HMAC. Got %s, expected %s"%(recv_hmac.hex(),expected_hmac.hex()))
         backend = default_backend()
         cipher = Cipher(algorithms.AES(self.card_aes_key), modes.CBC(iv), backend=backend)

@@ -25,6 +25,8 @@ public class SecureChannel{
 
     /** Key size for AES */
     static final public short AES_KEY_SIZE = (short)32;
+    /** Size of a single AES block */
+    static final public short AES_BLOCK_SIZE = (short)16;
     /** Key size for HMAC */
     static final public short MAC_KEY_SIZE = (short)32;
     /** Shared secret size */
@@ -35,15 +37,18 @@ public class SecureChannel{
     static final public short EC_PUBLIC_KEY_SIZE = (short)65;
     /** Max of AES, HMAC, EC and SharedSecret key size for efficient heap allocations */
     static final public short MAX_KEY_SIZE = (short)32;
-    /** 
-     * Size of the HMAC code used in messages. 
-     * We reduce it to 15 bytes to increase data capacity. 
-     */
+    /** Size of the HMAC code used in messages. 
+     *  We reduce it to 15 bytes to increase data capacity. */
     static final public short MAC_SIZE = (short)15;
     /** Size of the IV for AES */
     static final public short IV_SIZE = (short)16;
     /** Size of the fingerprint */
     static final public short FINGERPRINT_LEN = (short)4;
+    /** Maximum size of the cyphertext including MAC */
+    static final public short MAX_CT_SIZE = (short)255;
+    /** Maximum size of plaintext message we can encrypt. 
+     *  We need to add at least 1 byte of padding and MAC */
+    static final public short MAX_PLAIN_SIZE = (short)(MAX_CT_SIZE-MAC_KEY_SIZE-1);
 
     /** Static key pair generated when class instance is created */
     private KeyPair staticKeyPair;
@@ -68,21 +73,15 @@ public class SecureChannel{
     private byte cardMACKey[];
     /** HMAC host key, used to check authentication of incoming data */
     private byte hostMACKey[];
-    /** 
-     * Initialization vector for AES encryption/decryption.
-     * Used in a counter mode - increased by 1 on every message.
-     */
+    /** Initialization vector for AES encryption/decryption.
+     *  Used in a counter mode - increased by 1 on every message. */
     private byte iv[];
-    /**
-     * TransientHeap instance that is used to temporarly allocate memory
-     * for some internal operations.
-     */
+    /** TransientHeap instance that is used to temporarly allocate memory
+     *  for some internal operations. */
     private TransientHeap heap;
 
-    /**
-     * Constructor for SecureChannel.
-     * @param hp - TransientHeap instance to use for internal temporary memory allocations.
-     */
+    /** Constructor for SecureChannel.
+     *  @param hp - TransientHeap instance to use for internal temporary memory allocations. */
     public SecureChannel(TransientHeap hp){
         heap = hp;
         // generate random secret key for secure communication
@@ -102,20 +101,16 @@ public class SecureChannel{
         // that overwrites all keys with random junk
         closeChannel();
     }
-    /**
-     * Get static public key of the channel generated in the constructor.
-     * @return static public key as ECPublicKey instance
-     */
+    /** Get static public key of the channel generated in the constructor.
+     *  @return static public key as ECPublicKey instance */
     public ECPublicKey getStaticPublicKey(){
         return (ECPublicKey)staticKeyPair.getPublic();
     }
-    /**
-     * Get static public key of the secure channel generated in the constructor
-     * in uncompressed serialized format (65 bytes, {@code <04><x><y>})
-     * @param buf - bytearray to put public key in
-     * @param offset - position where to start
-     * @return number of bytes written to the buffer (65)
-     */
+    /** Get static public key of the secure channel generated in the constructor
+     *  in uncompressed serialized format (65 bytes, {@code <04><x><y>})
+     *  @param buf - bytearray to put public key in
+     *  @param offset - position where to start
+     *  @return number of bytes written to the buffer (65) */
     public short serializeStaticPublicKey(byte[] buf, short offset){
         ECPublicKey pub = getStaticPublicKey();
         return pub.getW(buf, offset);
@@ -210,10 +205,14 @@ public class SecureChannel{
      * @return number of bytes written to the buffer
      */
     public short authenticateData(byte[] data, short dataOffset, short dataLen, 
-                                         byte[] out, short outOffset){
+                                  byte[] out, short outOffset){
+        short len = Crypto.hmacSha256.getLength();
+        short off = heap.allocate(len);
         Crypto.hmacSha256.init(cardMACKey, (short)0, (short)cardMACKey.length);
-        Crypto.hmacSha256.doFinal(data, dataOffset, dataLen, out, outOffset);
-        return (short)32;
+        Crypto.hmacSha256.doFinal(data, dataOffset, dataLen, heap.buffer, off);
+        Util.arrayCopyNonAtomic(heap.buffer, off, out, outOffset, MAC_SIZE);
+        heap.free(len);
+        return MAC_SIZE;
     }
     /** 
      * Signs arbitrary data with unique keypair
@@ -270,25 +269,22 @@ public class SecureChannel{
      */
     public short decryptMessage(byte[] ct, short ctOffset, short ctLen, 
                                        byte[] out, short outOffset){
-        // first we check that hmac is correct
-        if(ctLen < 32){
+        // message should contain at least one block
+        // and cyphertext without MAC should be % AES_BLOCK_SIZE
+        if( (ctLen < (short)(AES_BLOCK_SIZE+MAC_SIZE)) || 
+            ((short)(ctLen - MAC_SIZE) % AES_BLOCK_SIZE != (short)0 )){
             closeChannel();
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
-        short len = (short)255;
+        short len = (short)(ctLen - MAC_SIZE);
         short off = heap.allocate(len);
-        short hmacLen = (short)32;
-        // max size => drop last byte
-        if(ctLen == (short)255){
-            hmacLen = (short)31;
-        }
-        short dataLen = (short)(ctLen-hmacLen);
+        short dataLen = (short)(ctLen - MAC_SIZE);
         // calculate expected hmac
         Crypto.hmacSha256.init(hostMACKey, (short)0, (short)hostMACKey.length);
         Crypto.hmacSha256.update(iv, (short)0, (short)iv.length);
         Crypto.hmacSha256.doFinal(ct, ctOffset, dataLen, heap.buffer, off);
         // check hmac is correct
-        if(Util.arrayCompare(heap.buffer, off, ct, (short)(ctOffset+dataLen),hmacLen)!=(byte)0){
+        if(Util.arrayCompare(heap.buffer, off, ct, (short)(ctOffset+dataLen),MAC_SIZE)!=(byte)0){
             closeChannel();
             heap.free(len);
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -311,31 +307,29 @@ public class SecureChannel{
      */
     public short encryptMessage(byte[] data, short offset, short dataLen, 
                                        byte[] cyphertext, short ctOffset){
-        if(dataLen >= (short)224){
-            // ciphertext + hmac wont fit in 256 bytes...
+        // check that plaintext will fit in max cyphertext length
+        if(dataLen > MAX_PLAIN_SIZE){
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
-        short len = (short)(iv.length+255);
+        // allocate memory for iv and cyphertext
+        short len = (short)(iv.length+MAX_CT_SIZE);
         short ivOffOld = heap.allocate(len);
         short off = (short)(ivOffOld + iv.length);
         // copy IV value to temp buffer and increase IV
         Util.arrayCopyNonAtomic(iv, (short)0, heap.buffer, ivOffOld, (short)iv.length);
         increaseIV();
-
+        // init cypher with old IV
         Crypto.cipher.init(cardAESKey, Cipher.MODE_ENCRYPT, heap.buffer, ivOffOld, (short)iv.length);
+        // encrypt to heap
         short ctLen = Crypto.cipher.doFinal(data, offset, dataLen, heap.buffer, off);
+        // copy encrypted text to output
         Util.arrayCopyNonAtomic(heap.buffer, off, cyphertext, ctOffset, ctLen);
-        Crypto.hmacSha256.init(cardMACKey, (short)0, (short)cardMACKey.length);
-        Crypto.hmacSha256.update(heap.buffer, ivOffOld, (short)iv.length);
-        Crypto.hmacSha256.doFinal(cyphertext, ctOffset, ctLen, heap.buffer, off);
-        short hmacLen = (short)32;
-        // if we are hitting the limit
-        if((short)(ctLen+hmacLen) == (short)256){
-            hmacLen = (short)31;
-        }
-        Util.arrayCopyNonAtomic(heap.buffer, off, cyphertext, (short)(ctOffset+ctLen), hmacLen);
+        // add MAC to output
+        ctLen += authenticateData(heap.buffer, ivOffOld, (short)(ctLen+(short)iv.length), 
+                                  cyphertext, (short)(ctOffset+ctLen));
+        // free used memory
         heap.free(len);
-        return (short)(ctLen+hmacLen);
+        return ctLen;
     }
     /** Increases IV by 1 */
     private void increaseIV(){
