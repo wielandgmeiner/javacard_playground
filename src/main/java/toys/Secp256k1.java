@@ -4,28 +4,33 @@ import javacard.framework.*;
 import javacard.security.*;
 
 /**
- * Utility methods to work with the SECP256k1 curve. This class is not meant to be instantiated, but its init method
+ * Utility methods to work with the SECP256k1 curve. 
+ * This class is not meant to be instantiated, but its .init() method
  * must be called during applet installation.
  */
 public class Secp256k1 {
+    /** Field prime P */
     static final byte[] SECP256K1_FP = {
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFE,(byte)0xFF,(byte)0xFF,(byte)0xFC,(byte)0x2F
     };
+    /** Parameter A from equation {@code y^2 = x^3 + A x + B} */
     static final byte[] SECP256K1_A = {
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00
     };
+    /** Parameter B from equation {@code y^2 = x^3 + A x + B} */
     static final byte[] SECP256K1_B = {
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,
         (byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x00,(byte)0x07
     };
+    /** Generator point G in uncompressed form */
     static final byte[] SECP256K1_G = {
         (byte)0x04,
         (byte)0x79,(byte)0xBE,(byte)0x66,(byte)0x7E,(byte)0xF9,(byte)0xDC,(byte)0xBB,(byte)0xAC,
@@ -37,13 +42,14 @@ public class Secp256k1 {
         (byte)0xFD,(byte)0x17,(byte)0xB4,(byte)0x48,(byte)0xA6,(byte)0x85,(byte)0x54,(byte)0x19,
         (byte)0x9C,(byte)0x47,(byte)0xD0,(byte)0x8F,(byte)0xFB,(byte)0x10,(byte)0xD4,(byte)0xB8
     };
+    /** Group order N of the curve */
     static final byte[] SECP256K1_R = {
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFE,
         (byte)0xBA,(byte)0xAE,(byte)0xDC,(byte)0xE6,(byte)0xAF,(byte)0x48,(byte)0xA0,(byte)0x3B,
         (byte)0xBF,(byte)0xD2,(byte)0x5E,(byte)0x8C,(byte)0xD0,(byte)0x36,(byte)0x41,(byte)0x41
     };
-    // to calculate square root
+    /** {@code (P+1)/4} - a constant to calculate square root modulo P */
     static final byte[] SECP256K1_ROOT = {
         (byte)0x3F,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
         (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
@@ -53,7 +59,11 @@ public class Secp256k1 {
 
     static final byte SECP256K1_K = (byte)0x01;
 
-    static final short SECP256K1_KEY_SIZE = 256;
+    static final short SECP256K1_KEY_SIZE                = (short)256;
+
+    static final short LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED = (short)65;
+    static final short LENGTH_EC_PUBLIC_KEY_COMPRESSED   = (short)33;
+    static final short LENGTH_EC_PRIVATE_KEY             = (short)33;
 
     // constants from JavaCard 3.0.5
     private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6;
@@ -63,7 +73,7 @@ public class Secp256k1 {
     static private KeyAgreement ecMultX;
     static private KeyAgreement ecAdd;
     static private Signature sig;
-    static public ECPrivateKey tempPrivateKey;
+    static public  ECPrivateKey tempPrivateKey;
     static private TransientHeap heap;
 
     /**
@@ -79,7 +89,6 @@ public class Secp256k1 {
         tempPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
         Secp256k1.setCommonCurveParameters(tempPrivateKey);
     }
-
     /**
      * Sets the SECP256k1 curve parameters to the given ECKey (public or private).
      *
@@ -93,7 +102,10 @@ public class Secp256k1 {
         key.setR(SECP256K1_R, (short)0, (short)SECP256K1_R.length);
         key.setK(SECP256K1_K);
     }
-
+    /**
+     * Generates a new private-public keypair on Secp256k1 curve
+     * @return KeyPair instance with curve parameters set to Secp256k1
+     */
     static public KeyPair newKeyPair(){
         KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, SECP256K1_KEY_SIZE);
         setCommonCurveParameters((ECPrivateKey)kp.getPrivate());
@@ -123,71 +135,97 @@ public class Secp256k1 {
         Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+1), (short)64);
         heap.free(len);
     }
+    /**
+     * Compress uncompressed public key.
+     * @param point  - buffer containing uncompressed public key 
+     * @param pOff   - offset of the point buffer
+     * @param out    - output buffer to write compressed pubkey to
+     * @param outOff - offset in the output buffer
+     * @return number of bytes written to the buffer (33)
+     * TODO: check that it's on the curve
+     */
     static public short compress(byte[] point, short pOff,
                          byte[] out, short outOff){
-        short len = (short)32;
+        // check first byte
+        if(point[pOff]!=(byte)0x04){
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        short len = LENGTH_EC_PUBLIC_KEY_COMPRESSED;
         short off = heap.allocate(len);
-        byte[] buf = heap.buffer;
 
-        byte sign = (byte)(0x02+(point[(short)(pOff+64)]&0x01));
+        heap.buffer[off] = (byte)(0x02+(point[(short)(pOff+64)]&0x01));
         // because maybe it's the same buffer...
-        Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, off, (short)32);
-        out[outOff] = sign;
-        Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+1), (short)32);
+        Util.arrayCopyNonAtomic(point, (short)(pOff+1), heap.buffer, (short)(off+1), (short)(LENGTH_EC_PUBLIC_KEY_COMPRESSED-1));
+        Util.arrayCopyNonAtomic(heap.buffer, off, out, outOff, LENGTH_EC_PUBLIC_KEY_COMPRESSED);
         heap.free(len);
-        return (short)33;
+        return LENGTH_EC_PUBLIC_KEY_COMPRESSED;
     }
+    /**
+     * Serialize ECPublicKey to the buffer
+     * @param key        - ECPublicKey to serialize
+     * @param compressed - flag to serialize in compressed (33 bytes) or uncompressed (65 bytes) form
+     * @param out        - output buffer to serialize the key to
+     * @param outOff     - offset in the buffer
+     * @return number of bytes written to the buffer. 33 for compressed, 65 for uncompressed.
+     */
     static public short serialize(ECPublicKey key, boolean compressed, 
                            byte[] out, short outOff){
-        short lenOut = 65;
         if(!compressed){
-            key.getW(out, outOff);
+            return key.getW(out, outOff);
         }else{
-            short len = (short)65;
+            short len = LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED;
             short off = heap.allocate(len);
             byte[] buf = heap.buffer;
             key.getW(buf, off);
-            lenOut = compress(buf, off, out, outOff);
+            short lenOut = compress(buf, off, out, outOff);
             heap.free(len);
+            return lenOut;
         }
-        return lenOut;
     }
     /**
-     * Multiplies a scalar in the form of a private key by the given point. Internally uses a special version of EC-DH
-     * supported since JavaCard 3.0.5 which outputs both X and Y in their uncompressed form.
+     * Multiplies a scalar by a point and writes result to the output buffer. 
      *
-     * @param privateKey the scalar in a private key object
-     * @param point the point to multiply
-     * @param pointOffset the offset of the point
-     * @param pointLen the length of the point
-     * @param out the output buffer
-     * @param outOffset the offset in the output buffer
-     * @return the length of the data written in the out buffer
+     * @param privateKey  - ECPrivateKey instance with the private key
+     * @param point       - buffer containing the point to multiply
+     * @param pointOffset - offset of the point buffer
+     * @param pointLen    - length of the point (should be 65)
+     * @param out         - output buffer to write result to
+     * @param outOffset   - offset in the output buffer
+     * @return number of bytes written to the output buffer
      */
     static public short pointMultiply(
                     ECPrivateKey privateKey, 
-                    byte[] point, short pointOffset, short pointLen, 
-                    byte[] out, short outOffset)
+                    byte[] point, short pointOff, short pointLen, 
+                    byte[] out, short outOff)
     {
         ecMult.init(privateKey);
-        return ecMult.generateSecret(point, pointOffset, pointLen, out, outOffset);
+        return ecMult.generateSecret(point, pointOff, pointLen, out, outOff);
     }
+    /**
+     * Creates a public key from private key and writes it to output buffer.
+     * 
+     * @param privateKey - ECPrivateKey instance containing private key
+     * @param compressed - a flag to serialize in compressed (33 bytes) or uncompressed form (65 bytes)
+     * @param out        - output buffer serialize pubkey to
+     * @param outOff     - offset in the output buffer
+     * @return number of bytes written to the output buffer
+     */
     static public short pubkeyCreate(
                     ECPrivateKey privateKey, boolean compressed,
                     byte[] out, short outOff){
         if(compressed){
-            short len = (short)65;
+            short len = LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED;
             short off = heap.allocate(len);
             byte[] buf = heap.buffer;
             pointMultiply(privateKey, 
-                        SECP256K1_G, (short)0, (short)65, 
+                        SECP256K1_G, (short)0, (short)SECP256K1_G.length, 
                         buf, off);
             short lenOut = compress(buf, off, out, outOff);
             heap.free(len);
             return lenOut;
         }else{
             return pointMultiply(privateKey, 
-                        SECP256K1_G, (short)0, (short)65, 
+                        SECP256K1_G, (short)0, (short)SECP256K1_G.length, 
                         out, outOff);
         }
     }
@@ -206,15 +244,15 @@ public class Secp256k1 {
     }
     /**
      * Preforms ECDH key agreement. 
-     * Writes x-coordinate of the point multiplication result to the output buffer.
+     * Writes x-coordinate of the resulting point to the output buffer.
      *
-     * @param privateKey the scalar in a private key object
-     * @param point the byte array containing a point to multiply in uncompressed form 04<x><y> (65 bytes)
-     * @param pointOffset the offset of the point
-     * @param pointLen the length of the point - should be 65
-     * @param out the output buffer to write x-coordinate of the product
-     * @param outOffset the offset in the output buffer to start from
-     * @return the length of the data written in the out buffer (should be 32)
+     * @param privateKey  - ECPrivateKey instance
+     * @param point       - buffer with a point to multiply in uncompressed form {@code 04<x><y>} (65 bytes)
+     * @param pointOffset - offset of the point
+     * @param pointLen    - length of the point - should be 65
+     * @param out         - output buffer to write x-coordinate of the product to
+     * @param outOffset   - offset in the output buffer
+     * @return number of bytes written in the output buffer (should be 32)
      */
     static public short ecdh(
                     ECPrivateKey privateKey, 
@@ -224,7 +262,15 @@ public class Secp256k1 {
         ecMultX.init(privateKey);
         return ecMultX.generateSecret(point, pointOffset, pointLen, out, outOffset);
     }
-
+    /**
+     * Signs the message with the private key. The message should be already hashed.
+     * @param privateKey - private key object to sign with
+     * @param msg        - buffer with a 32-byte hash to sign
+     * @param msgOffset  - offset in the msg buffer
+     * @param out        - output buffer to write the signature to
+     * @param outOffset  - offset in the output buffer
+     * @return number of bytes written to the output buffer
+     */
     static public short sign(
                     ECPrivateKey privateKey, 
                     byte[] msg, short msgOffset,
@@ -234,10 +280,23 @@ public class Secp256k1 {
         short len = sig.signPreComputedHash(msg, msgOffset, (short)32, out, outOffset);
         return (short)(len+setLowS(out, outOffset));
     }
-    static public void generateRandomSecret(byte[] buf, short off){
-        FiniteField.getRandomElement(SECP256K1_R, (short)0, buf, off);
+    /**
+     * Generates a random secret up to the group order. It is always a valid private key.
+     * @param buf - buffer where to put the secret
+     * @param off - offset in the buffer
+     */
+    static public short generateRandomSecret(byte[] buf, short off){
+        return FiniteField.getRandomElement(SECP256K1_R, (short)0, buf, off);
     }
-    // fixes S, returns delta in the length
+    /**
+     * Fixes S to lower half according to BIP-62. Changes it in place and returns difference in length.
+     * <p>
+     * https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki#low-s-values-in-signatures
+     * 
+     * @param sig    - buffer with a signature to fix
+     * @param sigOff - offset of the signature in the buffer
+     * @return difference in signature length comparing to initial (not positive)
+     */
     static public short setLowS(byte[] sig, short sigOff){
         short sLenOff = (short)(sigOff+5+sig[(short)(sigOff+3)]);
         short sLen = sig[sLenOff];

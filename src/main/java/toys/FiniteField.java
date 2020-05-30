@@ -5,10 +5,10 @@ import javacardx.crypto.Cipher;
 import javacard.security.RSAPublicKey;
 import javacard.security.KeyBuilder;
 
-/* 
- * Package: toys
- * Filename: FinalField.java 
- * Class: FinalField
+/**
+ * Utility methods to work with the field elements used in Secp256k1.
+ * This class is not meant to be instantiated, but its .init() method
+ * must be called during applet installation.
  */
 public class FiniteField{
     static private Cipher rsaCipher;
@@ -35,6 +35,11 @@ public class FiniteField{
         (byte)0xBA,(byte)0xAE,(byte)0xDC,(byte)0xE6,(byte)0xAF,(byte)0x48,(byte)0xA0,(byte)0x3B,
         (byte)0xBF,(byte)0xD2,(byte)0x5E,(byte)0x8C,(byte)0xD0,(byte)0x36,(byte)0x41,(byte)0x41
     };
+    /** Size of the field element in bytes */
+    final static public short LENGTH_FIELD_ELEMENT = (short)32;
+    /** Size of the RSA key in bytes */
+    final static public short LENGTH_RSA_KEY = (short)64;
+
     static public void init(TransientHeap hp){
         heap = hp;
         rsaModFP = (RSAPublicKey) KeyBuilder.buildKey(
@@ -42,14 +47,14 @@ public class FiniteField{
         rsaModN = (RSAPublicKey) KeyBuilder.buildKey(
                 KeyBuilder.TYPE_RSA_PUBLIC, KeyBuilder.LENGTH_RSA_512, false);
         rsaCipher = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, false);
-        rsaModFP.setModulus(RSA_FP, (short)0, (short)64);
-        rsaModN.setModulus(RSA_N, (short)0, (short)64);
+        rsaModFP.setModulus(RSA_FP, (short)0, (short)RSA_FP.length);
+        rsaModN.setModulus(RSA_N, (short)0, (short)RSA_N.length);
     }
     // exponentiation modulo FP with short exponent (like 3 or -1)
     static public void powShortModFP(byte[] a, short aOff,
                                      short exponent,
                                      byte[] out, short outOff){
-        powShortMod(a, aOff, exponent, out, outOff, rsaModFP, RSA_FP, (short)32);
+        powShortMod(a, aOff, exponent, out, outOff, rsaModFP, RSA_FP, LENGTH_FIELD_ELEMENT);
     }
     // exponentiation modulo FP
     static public void powModFP(byte[] a, short aOff,
@@ -61,7 +66,7 @@ public class FiniteField{
     static public void powShortModN(byte[] a, short aOff,
                                     short exponent,
                                     byte[] out, short outOff){
-        powShortMod(a, aOff, exponent, out, outOff, rsaModN, RSA_N, (short)32);
+        powShortMod(a, aOff, exponent, out, outOff, rsaModN, RSA_N, LENGTH_FIELD_ELEMENT);
     }
     // exponentiation modulo N
     static public void powModN(byte[] a, short aOff,
@@ -74,15 +79,15 @@ public class FiniteField{
                                    byte[] out, short outOff, 
                                    RSAPublicKey rsaKey,
                                    byte[] mod, short modOff){    
-        short len = (short)32;
+        short len = LENGTH_FIELD_ELEMENT;
         short off = heap.allocate(len);
         byte[] buf = heap.buffer;
         // set 32-byte exponent
         if(exponent > 0){ // positive
-            Util.setShort(buf, (short)(off+30), exponent);
+            Util.setShort(buf, (short)(off+LENGTH_FIELD_ELEMENT-2), exponent);
         }else{ // negative
             exponent--; // n^(p-1)=1
-            Util.setShort(buf, (short)(off+30), (short)(-exponent));
+            Util.setShort(buf, (short)(off+LENGTH_FIELD_ELEMENT-2), (short)(-exponent));
             subtract(mod, modOff, buf, off, buf, off, (short)1);
         }
         powMod(a, aOff, buf, off, out, outOff, rsaKey);
@@ -93,26 +98,36 @@ public class FiniteField{
                               byte[] exp, short expOff, 
                               byte[] out, short outOff,
                               RSAPublicKey rsaKey){
-        short len = (short)64;
+        short len = LENGTH_RSA_KEY;
         short off = heap.allocate(len);
         byte[] buf = heap.buffer;
 
-        Util.arrayCopyNonAtomic(a, aOff, buf, (short)(off+32), (short)32);
-        rsaKey.setExponent(exp, expOff, (short)32);
+        short elementOff = (short)(off+LENGTH_RSA_KEY-LENGTH_FIELD_ELEMENT);
+        Util.arrayCopyNonAtomic(a, aOff, buf, elementOff, LENGTH_FIELD_ELEMENT);
+        rsaKey.setExponent(exp, expOff, LENGTH_FIELD_ELEMENT);
         rsaCipher.init(rsaKey, Cipher.MODE_ENCRYPT);
-        rsaCipher.doFinal(buf, off, (short)64, buf, off);
-        Util.arrayCopyNonAtomic(buf, (short)(off+32), out, outOff, (short)32);
+        rsaCipher.doFinal(buf, off, LENGTH_RSA_KEY, buf, off);
+        Util.arrayCopyNonAtomic(buf, elementOff, out, outOff, LENGTH_FIELD_ELEMENT);
         heap.free(len);
     }
-    // get random number up to max value
-    // max should be large enough as we are just trying over and over
-    // until we get correct number
-    static public void getRandomElement(byte[] max, short maxOff,
+    /**
+     * Generates a random number up to max value.
+     * Max value should be large enough (like curve order or field prime) 
+     * as we are just trying over and over until we get correct number.
+     * 
+     * @param max    - buffer with max value
+     * @param maxOff - offset in the buffer with max value
+     * @param out    - buffer to generate random element to
+     * @param outOff - offset in the output buffer
+     * @return number of bytes written to the output buffer (32)
+     */
+    static public short getRandomElement(byte[] max, short maxOff,
                                         byte[] out, short outOff){
-        Crypto.random.generateData(out, outOff, (short)32);
+        Crypto.random.generateData(out, outOff, LENGTH_FIELD_ELEMENT);
         while(isGreaterOrEqual(out, outOff, max, maxOff) > 0){
-            Crypto.random.generateData(out, outOff, (short)32);
+            Crypto.random.generateData(out, outOff, LENGTH_FIELD_ELEMENT);
         }
+        return LENGTH_FIELD_ELEMENT;
     }
     // constant time modulo addition
     // can tweak in place
@@ -120,7 +135,7 @@ public class FiniteField{
                               byte[] b,     short bOff, 
                               byte[] out,   short outOff, 
                               byte[] mod,   short modOff){
-        short len = (short)32;
+        short len = LENGTH_FIELD_ELEMENT;
         short off = heap.allocate(len);
         byte[] buf = heap.buffer;
         // addition with carry
@@ -138,7 +153,7 @@ public class FiniteField{
         // if a is smaller than b, a-b will be negative
         // and we will get carry of -1
         short carry = 0;
-        for(short i=31; i>=0; i--){
+        for(short i=(short)(LENGTH_FIELD_ELEMENT-1); i>=0; i--){
             carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)+carry);
             carry = (short)(carry>>8);
         }
@@ -153,7 +168,7 @@ public class FiniteField{
                             byte[] b, short bOff,
                             byte[] out, short outOff){
         short carry = 0;
-        for(short i=31; i>=0; i--){
+        for(short i=(short)(LENGTH_FIELD_ELEMENT-1); i>=0; i--){
             carry = (short)((short)(a[(short)(aOff+i)]&0xFF)+(short)(b[(short)(bOff+i)]&0xFF)+carry);
             out[(short)(outOff+i)] = (byte)carry;
             carry = (short)(carry>>8);
@@ -171,7 +186,7 @@ public class FiniteField{
                                  byte[] out, short outOff, 
                                  short multiplier){
         short carry = 0;
-        for(short i=31; i>=0; i--){
+        for(short i=(short)(LENGTH_FIELD_ELEMENT-1); i>=0; i--){
             carry = (short)((a[(short)(aOff+i)]&0xFF)-(b[(short)(bOff+i)]&0xFF)*multiplier+carry);
             out[(short)(outOff+i)] = (byte)carry;
             carry = (short)(carry>>8);
