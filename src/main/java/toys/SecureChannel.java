@@ -22,6 +22,8 @@ public class SecureChannel{
     static final public byte MODE_ES = (byte)0x02;
     /** Use static keys on both sides to establish secure channel */
     static final public byte MODE_SS = (byte)0x03;
+    /** Nonce size for ES and SS modes */
+    static final public short NONCE_SIZE = (short)32;
 
     /** Key size for AES */
     static final public short AES_KEY_SIZE = (short)32;
@@ -29,13 +31,11 @@ public class SecureChannel{
     static final public short AES_BLOCK_SIZE = (short)16;
     /** Key size for HMAC */
     static final public short MAC_KEY_SIZE = (short)32;
-    /** Shared secret size */
-    static final public short SHARED_SECRET_SIZE = (short)32;
     /** EC key size */
     static final public short EC_PRIVATE_KEY_SIZE = (short)32;
     /** EC public key size */
     static final public short EC_PUBLIC_KEY_SIZE = (short)65;
-    /** Max of AES, HMAC, EC and SharedSecret key size for efficient heap allocations */
+    /** Max of AES, HMAC and EC key sizes for efficient heap allocations */
     static final public short MAX_KEY_SIZE = (short)32;
     /** Size of the HMAC code used in messages. 
      *  We reduce it to 15 bytes to increase data capacity. */
@@ -55,7 +55,6 @@ public class SecureChannel{
     /** Ephemeral private key for channel establishment */
     private ECPrivateKey ephemeralPrivateKey;
 
-    private byte sharedSecret[];
     /** Prefix to derive card keys from shared secret */
     static final private byte CARD_PREFIX[] = { 'c', 'a', 'r', 'd' };
     /** Prefix to derive host keys from shared secret */
@@ -90,7 +89,6 @@ public class SecureChannel{
         // generate random session key pair 
         ephemeralPrivateKey = (ECPrivateKey)KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_256, false);
         Secp256k1.setCommonCurveParameters(ephemeralPrivateKey);
-        sharedSecret = JCSystem.makeTransientByteArray(SHARED_SECRET_SIZE, JCSystem.CLEAR_ON_DESELECT);
         iv = JCSystem.makeTransientByteArray(IV_SIZE, JCSystem.CLEAR_ON_DESELECT);
 
         cardAESKey = (AESKey)KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -115,49 +113,114 @@ public class SecureChannel{
         ECPublicKey pub = getStaticPublicKey();
         return pub.getW(buf, offset);
     }
-    public short establishSharedSecret(byte[] buf, short offset, 
-                                       byte mode,
-                                       byte[] out, short outOff){
+    /**
+     * Open secure channel in Static-Static mode.
+     * <p>
+     * Both the host and the card use a static key.
+     * <p>
+     * Shared secret is calculated as {@code sha256(ecdh(e,s)|host_nonce|card_nonce)}
+     * 
+     * @param hostPubkey    - buffer containing uncompressed host pubkey
+     * @param hostPubkeyOff - offset where host pubkey starts
+     * @param hostNonce     - buffer containing host nonce
+     * @param hostNonceOff  - offset of the host nonce
+     * @param cardNonce     - buffer to write card nonce
+     * @param cardNonceOff  - offset for the card nonce
+     * @return number of bytes written to the nonce buffer
+     */
+    public short openChannelSS(byte[] hostPubkey, short hostPubkeyOff,
+                               byte[] hostNonce,  short hostNonceOff,
+                               byte[] cardNonce,  short cardNonceOff){
         short len = MAX_KEY_SIZE;
         short off = heap.allocate(len);
-        short outLen = (short)0;
-        // first we wipe what we already have
-        closeChannel();
-        // now we establish new shared secret
-        switch(mode){
-        case MODE_EE:
-            // generate random key pair
-            Crypto.random.generateData(heap.buffer, off, EC_PRIVATE_KEY_SIZE);
-            ephemeralPrivateKey.setS(heap.buffer, off, EC_PRIVATE_KEY_SIZE);
-            Secp256k1.ecdh( ephemeralPrivateKey, 
-                            buf, offset, EC_PUBLIC_KEY_SIZE, 
-                            sharedSecret, (short)0);
-            break;
-        default:
-            Secp256k1.ecdh( (ECPrivateKey)staticKeyPair.getPrivate(), 
-                            buf, offset, EC_PUBLIC_KEY_SIZE, 
-                            heap.buffer, off);
-            Crypto.sha256.reset();
-            // shared secret
-            Crypto.sha256.update(heap.buffer, off, (short)32);
-            // host nonce
-            Crypto.sha256.update(buf, (short)(offset+65), (short)32);
-            // card nonce
-            Crypto.random.generateData(out, outOff, (short)32);
-            Crypto.sha256.doFinal(out, outOff, (short)32, sharedSecret, (short)0);
-            outLen += 32;
-        }
+        short ecdhLen = Secp256k1.ecdh( (ECPrivateKey)staticKeyPair.getPrivate(), 
+                        hostPubkey, hostPubkeyOff, EC_PUBLIC_KEY_SIZE, 
+                        heap.buffer, off);
+        // calculating shared secret
+        Crypto.sha256.reset();
+        Crypto.sha256.update(heap.buffer, off, ecdhLen);
+        // add host nonce
+        Crypto.sha256.update(hostNonce, hostNonceOff, NONCE_SIZE);
+        // add card nonce
+        Crypto.random.generateData(cardNonce, cardNonceOff, NONCE_SIZE);
+        Crypto.sha256.doFinal(cardNonce, cardNonceOff, NONCE_SIZE, heap.buffer, off);
+        openChannel(heap.buffer, off, (short)Crypto.sha256.getLength());
         heap.free(len);
-        // derive AES and MAC keys
-        deriveKeys();
-        // now we can set iv counter to zero
-        Util.arrayFillNonAtomic(iv, (short)0, (short)iv.length, (byte)0);
-        return outLen;
+        return NONCE_SIZE;
     }
     /**
-     * Derives AES and MAC keys for the card from shared secret
+     * Open secure channel in Ephemeral-Static mode.
+     * <p>
+     * Host uses an ephemeral key, card uses a static key.
+     * <p>
+     * Shared secret is calculated as {@code sha256(ecdh(e,s)|card_nonce)}
+     * 
+     * @param hostPubkey    - buffer containing uncompressed host pubkey
+     * @param hostPubkeyOff - offset where host pubkey starts
+     * @param cardNonce     - buffer to write card nonce
+     * @param cardNonceOff  - offset for the card nonce
+     * @return number of bytes written to the nonce buffer
      */
-    private void deriveKeys(){
+    public short openChannelES(byte[] hostPubkey, short hostPubkeyOff,
+                               byte[] cardNonce,  short cardNonceOff){
+        short len = MAX_KEY_SIZE;
+        short off = heap.allocate(len);
+        short ecdhLen = Secp256k1.ecdh( (ECPrivateKey)staticKeyPair.getPrivate(), 
+                        hostPubkey, hostPubkeyOff, EC_PUBLIC_KEY_SIZE, 
+                        heap.buffer, off);
+        // calculating shared secret
+        Crypto.sha256.reset();
+        Crypto.sha256.update(heap.buffer, off, ecdhLen);
+        // add card nonce
+        Crypto.random.generateData(cardNonce, cardNonceOff, NONCE_SIZE);
+        Crypto.sha256.doFinal(cardNonce, cardNonceOff, NONCE_SIZE, heap.buffer, off);
+        openChannel(heap.buffer, off, (short)Crypto.sha256.getLength());
+        heap.free(len);
+        return NONCE_SIZE;
+    }
+    /**
+     * Open secure channel in Ephemeral-Ephemeral mode.
+     * <p>
+     * Both the host and the card use an ephemeral key.
+     * <p>
+     * Shared secret is calculated as {@code sha256(ecdh(e,e))}
+     * 
+     * @param hostPubkey    - buffer containing uncompressed host pubkey
+     * @param hostPubkeyOff - offset where host pubkey starts
+     * @param cardPubkey    - buffer to write ephemeral public key of the card to
+     * @param cardPubkeyOff - offset where to start writing
+     * @return number of bytes written to the nonce buffer
+     */
+    public short openChannelEE(byte[] hostPubkey, short hostPubkeyOff,
+                               byte[] cardPubkey, short cardPubkeyOff){
+        short len = MAX_KEY_SIZE;
+        short off = heap.allocate(len);
+        Crypto.random.generateData(heap.buffer, off, EC_PRIVATE_KEY_SIZE);
+        ephemeralPrivateKey.setS(heap.buffer, off, EC_PRIVATE_KEY_SIZE);
+        short ecdhLen = Secp256k1.ecdh( ephemeralPrivateKey, 
+                        hostPubkey, hostPubkeyOff, EC_PUBLIC_KEY_SIZE, 
+                        heap.buffer, off);
+        // calculating shared secret
+        Crypto.sha256.reset();
+        Crypto.sha256.doFinal(heap.buffer, off, ecdhLen, heap.buffer, off);
+        openChannel(heap.buffer, off, (short)Crypto.sha256.getLength());
+        heap.free(len);
+        // pubkey is just ECDH of private key with G
+        return Secp256k1.pointMultiply( ephemeralPrivateKey, 
+                        Secp256k1.SECP256K1_G, (short)0, (short)65, 
+                        cardPubkey, cardPubkeyOff);
+    }
+    /**
+     * Opens a secure channel based on shared secret.
+     * <p>
+     * Derives AES and MAC keys, fills IV with zeroes
+     * 
+     * @param secret    - buffer containing shared secret 
+     * @param secretOff - offset of the secret in the buffer
+     * @param secretLen - length of the shared secret
+     */
+    private void openChannel(byte[] secret, short secretOff, short secretLen){
+        // derive AES and MAC keys
         short len = AES_KEY_SIZE;
         short off = heap.allocate(len);
 
@@ -165,35 +228,32 @@ public class SecureChannel{
         Crypto.sha256.reset();
         Crypto.sha256.update(CARD_PREFIX, (short)0, (short)CARD_PREFIX.length);
         Crypto.sha256.update(AES_PREFIX, (short)0, (short)AES_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, heap.buffer, off);
+        Crypto.sha256.doFinal(secret, secretOff, secretLen, heap.buffer, off);
         cardAESKey.setKey(heap.buffer, off);
 
         // host AES key
         Crypto.sha256.reset();
         Crypto.sha256.update(HOST_PREFIX, (short)0, (short)HOST_PREFIX.length);
         Crypto.sha256.update(AES_PREFIX, (short)0, (short)AES_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)32, heap.buffer, off);
+        Crypto.sha256.doFinal(secret, secretOff, secretLen, heap.buffer, off);
         hostAESKey.setKey(heap.buffer, off);
+
+        heap.free(len);
 
         // card MAC key
         Crypto.sha256.reset();
         Crypto.sha256.update(CARD_PREFIX, (short)0, (short)CARD_PREFIX.length);
         Crypto.sha256.update(MAC_PREFIX, (short)0, (short)MAC_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, cardMACKey, (short)0);
+        Crypto.sha256.doFinal(secret, secretOff, secretLen, cardMACKey, (short)0);
 
         // host MAC key
         Crypto.sha256.reset();
         Crypto.sha256.update(HOST_PREFIX, (short)0, (short)HOST_PREFIX.length);
         Crypto.sha256.update(MAC_PREFIX, (short)0, (short)MAC_PREFIX.length);
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, hostMACKey, (short)0);
+        Crypto.sha256.doFinal(secret, secretOff, secretLen, hostMACKey, (short)0);
 
-        heap.free(len);
-    }
-    public short serializeSessionPubkey(byte[] buf, short offset){
-        // pubkey is just ECDH of private key with G
-        return Secp256k1.pointMultiply( ephemeralPrivateKey, 
-                        Secp256k1.SECP256K1_G, (short)0, (short)65, 
-                        buf, offset);
+        // now we can set iv counter to zero
+        Util.arrayFillNonAtomic(iv, (short)0, (short)iv.length, (byte)0);
     }
     /**
      * Authenticates data with card's session MAC key.
@@ -240,23 +300,6 @@ public class SecureChannel{
         short sigLen = Secp256k1.sign((ECPrivateKey)staticKeyPair.getPrivate(), heap.buffer, off, out, outOffset);
         heap.free(len);
         return sigLen;
-    }
-    /**
-     * Writes a fingerprint to the buffer (first 4 bytes of sha256 of shared secret)
-     * @param buf - buffer to write fingerprint to
-     * @param offset - offset where to start
-     * @return number of bytes written (4)
-     */
-    public short getSharedFingerprint(byte[] buf, short offset){
-        // sending first 4 bytes of sha256(shared secret)
-        short len = (short)Crypto.sha256.getLength();
-        short off = heap.allocate(len);
-
-        Crypto.sha256.reset();
-        Crypto.sha256.doFinal(sharedSecret, (short)0, (short)sharedSecret.length, heap.buffer, off);
-        Util.arrayCopyNonAtomic(heap.buffer, off, buf, offset, FINGERPRINT_LEN);
-        heap.free(len);
-        return FINGERPRINT_LEN;
     }
     /**
      * Dectypts message, also checks authentication code.
@@ -355,7 +398,6 @@ public class SecureChannel{
         Crypto.random.generateData(iv, (short)0, (short)iv.length);
         Crypto.random.generateData(hostMACKey,   (short)0, (short)hostMACKey.length);
         Crypto.random.generateData(cardMACKey,   (short)0, (short)cardMACKey.length);
-        Crypto.random.generateData(sharedSecret, (short)0, (short)sharedSecret.length);
 
         // we generate random data to the heap temp buffer and
         // reuse this buffer to set this random data as AES keys

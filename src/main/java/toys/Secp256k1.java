@@ -214,7 +214,7 @@ public class Secp256k1 {
      * @param pointLen the length of the point - should be 65
      * @param out the output buffer to write x-coordinate of the product
      * @param outOffset the offset in the output buffer to start from
-     * @return the length of the data written in the out buffer (should be 65)
+     * @return the length of the data written in the out buffer (should be 32)
      */
     static public short ecdh(
                     ECPrivateKey privateKey, 

@@ -46,6 +46,9 @@ import javacard.framework.*;
  */
 public class SecureApplet extends Applet{
 
+    /** Class code for secure applet */
+    private static final byte SECURE_CLA                      = (byte)0xB0;
+
     /** Instruction to get 32 random bytes, without secure channel */
     private static final byte INS_GET_RANDOM                  = (byte)0xB1;
 
@@ -160,92 +163,140 @@ public class SecureApplet extends Applet{
         apdu.setIncomingAndReceive();
 
         short len = 0;
-        // TODO: check CLA to be 0xB0?
-        // Dispatch INS in APDU.
-        switch (buf[ISO7816.OFFSET_INS]){
-        case INS_GET_CARD_PUBKEY:
-            len = sendCardPubkey(buf, (short)0);
-            break;
-        case INS_OPEN_SECURE_CHANNEL_ES_MODE:
-            // this one uses random key from host and
-            // static key from card - simple key agreement
-
-            // first - lock the card to avoid active MITM
-            lock();
-            len = setHostPubkey(buf, dataOff, dataLen);
-            break;
-        case INS_OPEN_SECURE_CHANNEL_EE_MODE:
-            // this one uses random keys from both parties
-            // more secure, but probably uses EEPROM :(
-
-            // first - lock the card to avoid active MITM
-            lock();
-            len = setHostGetEphimerial(buf, dataOff, dataLen);
-            break;
-        case INS_SECURE_MESSAGE:
-            // Try to handle secure message
-            // Only secure channel exceptions will get here
-            // as internal exceptions are caught and transmitted
-            // over secure channel
-            try {
-                len = handleSecureMessage(buf, dataOff, dataLen);
-            } catch (CardRuntimeException e) {
-                // something is wrong with secure channel
-                // so we close channel and lock the card
-                sc.closeChannel();
+        // check CLA
+        if(buf[ISO7816.OFFSET_CLA] == SECURE_CLA){
+            // Dispatch INS in APDU.
+            switch (buf[ISO7816.OFFSET_INS]){
+            case INS_GET_CARD_PUBKEY:
+                len = sendCardPubkey(buf, (short)0);
+                break;
+            case INS_OPEN_SECURE_CHANNEL_SS_MODE:
+                // first - lock the card to avoid active MITM
                 lock();
-                // reraise
-                ISOException.throwIt(e.getReason());
+                len = openChannelSS(buf, dataOff, dataLen, buf, (short)0);
+                break;
+            case INS_OPEN_SECURE_CHANNEL_ES_MODE:
+                // first - lock the card to avoid active MITM
+                lock();
+                len = openChannelES(buf, dataOff, dataLen, buf, (short)0);
+                break;
+            case INS_OPEN_SECURE_CHANNEL_EE_MODE:
+                // first - lock the card to avoid active MITM
+                lock();
+                len = openChannelEE(buf, dataOff, dataLen, buf, (short)0);
+                break;
+            case INS_SECURE_MESSAGE:
+                // Try to handle secure message
+                // Only secure channel exceptions will get here
+                // as internal exceptions are caught and transmitted
+                // over secure channel
+                try {
+                    len = handleSecureMessage(buf, dataOff, dataLen);
+                } catch (CardRuntimeException e) {
+                    // something is wrong with secure channel
+                    // so we close channel and lock the card
+                    sc.closeChannel();
+                    lock();
+                    // reraise
+                    ISOException.throwIt(e.getReason());
+                }
+                break;
+            case INS_GET_RANDOM:
+                len = sendRandom(buf, dataOff, dataLen);
+                break;
+            case INS_CLOSE_CHANNEL:
+                // close secure channel
+                sc.closeChannel();
+                // lock the card
+                lock();
+                break;
+            default:
+                len = processPlainMessage(buf, dataOff, dataLen);
             }
-            break;
-        case INS_GET_RANDOM:
-            len = sendRandom(buf, dataOff, dataLen);
-            break;
-        case INS_CLOSE_CHANNEL:
-            // close secure channel
-            sc.closeChannel();
-            // lock the card
-            lock();
-            break;
-        default:
+        }else{
             len = processPlainMessage(buf, dataOff, dataLen);
         }
+
         apdu.setOutgoingAndSend((short)0, len);
     }
     /** Puts unique public key of the card to the message buffer */
     private short sendCardPubkey(byte[] buf, short off){
         return sc.serializeStaticPublicKey(buf, off);
     }
-    private short setHostPubkey(byte[] msg, short msgOff, short msgLen){
+    /**
+     * Open a secure channel using SS (static-static) mode.
+     * Message should have a form: {@code uncompressed_host_pubkey | host_nonce} 
+     * This function writes card nonce to the output buffer, adds MAC and signature to it.
+     * @param msg    - buffer containing message with host pubkey and host nonce
+     * @param msgOff - offset in the buffer
+     * @param msgLen - length of the message
+     * @param out    - output buffer to write responce to (can be the same as input)
+     * @param outOff - offset in the output buffer
+     * @return number of bytes written into the output buffer 
+     */
+    private short openChannelSS(byte[] msg, short msgOff, short msgLen, byte[] out, short outOff){
         // check if data length is ok
-        if(msgLen != (short)97){
+        if(msgLen != (short)(SecureChannel.NONCE_SIZE + SecureChannel.EC_PUBLIC_KEY_SIZE)){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             return (short)0;
         }
         // will put nonce there
-        short len = sc.establishSharedSecret(msg, msgOff, SecureChannel.MODE_ES, msg, (short)0);
-        // get hash of the shared secret and put it to the buffer
-        len += sc.getSharedFingerprint(msg, len);
+        short nonceOff = (short)(msgOff + SecureChannel.EC_PUBLIC_KEY_SIZE);
+        short len = sc.openChannelSS(msg, msgOff, msg, nonceOff, out, outOff);
         // add hmac using shared secret
-        len += sc.authenticateData(msg, (short)0, len, msg, len);
+        len += sc.authenticateData(out, outOff, len, out, (short)(outOff+len));
         // add signature with static pubkey
-        len += sc.signData(msg, (short)0, len, msg, len);
+        len += sc.signData(out, outOff, len, out, (short)(outOff+len));
         return len;
     }
-    private short setHostGetEphimerial(byte[] msg, short msgOff, short msgLen){
+    /**
+     * Open a secure channel using ES (ephemeral-static) mode.
+     * Message should have a form: {@code uncompressed_host_pubkey} 
+     * This function writes card nonce to the output buffer, adds MAC and signature to it.
+     * @param msg    - buffer containing message with host pubkey
+     * @param msgOff - offset in the buffer
+     * @param msgLen - length of the message
+     * @param out    - output buffer to write responce to (can be the same as input)
+     * @param outOff - offset in the output buffer
+     * @return number of bytes written into the output buffer 
+     */
+    private short openChannelES(byte[] msg, short msgOff, short msgLen, byte[] out, short outOff){
         // check if data length is ok
-        if(msgLen != (byte)65){
+        if(msgLen != SecureChannel.EC_PUBLIC_KEY_SIZE){
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            return (short)0;
+        }
+        // will put nonce there
+        short len = sc.openChannelES(msg, msgOff, out, outOff);
+        // add hmac using shared secret
+        len += sc.authenticateData(out, outOff, len, out, (short)(outOff+len));
+        // add signature with static pubkey
+        len += sc.signData(out, outOff, len, out, (short)(outOff+len));
+        return len;
+    }
+    /**
+     * Open a secure channel using EE (ephemeral-ephemeral) mode.
+     * Message should have a form: {@code uncompressed_host_pubkey} 
+     * This function writes card ephemeral key to the output buffer, adds MAC and signature to it.
+     * @param msg    - buffer containing message with host pubkey
+     * @param msgOff - offset in the buffer
+     * @param msgLen - length of the message
+     * @param out    - output buffer to write responce to (can be the same as input)
+     * @param outOff - offset in the output buffer
+     * @return number of bytes written into the output buffer 
+     */
+    private short openChannelEE(byte[] msg, short msgOff, short msgLen, byte[] out, short outOff){
+        // check if data length is ok
+        if(msgLen != SecureChannel.EC_PUBLIC_KEY_SIZE){
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             return (short)0;
         }
         // for consistency with se mode
-        sc.establishSharedSecret(msg, msgOff, SecureChannel.MODE_EE, msg, (short)0);
-        // get session pubkey and put it to the buffer
-        short len = sc.serializeSessionPubkey(msg, (short)0);
+        short len = sc.openChannelEE(msg, msgOff, out, outOff);
         // add hmac using shared secret
-        len += sc.authenticateData(msg, (short)0, len, msg, len);
+        len += sc.authenticateData(out, outOff, len, out, (short)(outOff+len));
         // add signature with static pubkey
-        len += sc.signData(msg, (short)0, len, msg, len);
+        len += sc.signData(out, outOff, len, out, (short)(outOff+len));
         return len;
     }
     private short handleSecureMessage(byte[] msg, short msgOff, short msgLen){
@@ -256,12 +307,9 @@ public class SecureApplet extends Applet{
             len = preprocessSecureMessage(msg, (short)0, len);
         // code can throw an exception and 
         // it will be transmitted over secure channel
-        // TODO: catch ISOException and transmit as is
-        //       for others - transmit general errorcode
         }catch(CardRuntimeException e){
             len = sendError(e.getReason(), msg, (short)0);
         }
-        // return len;
         // encrypt buffer and send to the host
         return sc.encryptMessage(msg, (short)0, len, msg, (short)0);
     }

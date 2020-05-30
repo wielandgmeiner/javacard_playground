@@ -132,7 +132,7 @@ class SecureAppletBase(AppletBase):
             data = s.read(65)
             pub = secp256k1.ec_pubkey_parse(data)
             secp256k1.ec_pubkey_tweak_mul(pub, secret)
-            shared_secret = secp256k1.ec_pubkey_serialize(pub)[1:33]
+            shared_secret = hashlib.sha256(secp256k1.ec_pubkey_serialize(pub)[1:33]).digest()
             shared_fingerprint = self.derive_keys(shared_secret)
             recv_hmac = s.read(15)
             h = hmac.new(self.card_mac_key, digestmod='sha256')
@@ -149,9 +149,7 @@ class SecureAppletBase(AppletBase):
                 raise RuntimeError("Signature is invalid: %r", raw_sig.hex())
         # se mode - use our ephimerial key with card's static key
         else:
-            nonce_host = os.urandom(32)
-            payload = secp256k1.ec_pubkey_serialize(host_pub, secp256k1.EC_UNCOMPRESSED)+nonce_host
-            data = bytes([len(payload)])+payload
+            data = bytes([65])+secp256k1.ec_pubkey_serialize(host_pub, secp256k1.EC_UNCOMPRESSED)
             # ugly copy
             pub = secp256k1.ec_pubkey_parse(secp256k1.ec_pubkey_serialize(self.card_pubkey))
             secp256k1.ec_pubkey_tweak_mul(pub, secret)
@@ -159,13 +157,10 @@ class SecureAppletBase(AppletBase):
             res = self.request("B0B40000"+data.hex())
             s = BytesIO(res)
             nonce_card = s.read(32)
-            recv_fingerprint = s.read(4)
             recv_hmac = s.read(15)
-            secret_with_nonces = hashlib.sha256(shared_secret+nonce_host+nonce_card).digest()
+            secret_with_nonces = hashlib.sha256(shared_secret+nonce_card).digest()
             shared_fingerprint = self.derive_keys(secret_with_nonces)
-            if shared_fingerprint != recv_fingerprint:
-                print("Wrong hash of secrets: %s - %s" % (shared_fingerprint.hex(), recv_fingerprint.hex()))
-            data = nonce_card + recv_fingerprint
+            data = nonce_card
             h = hmac.new(self.card_mac_key, digestmod='sha256')
             h.update(data)
             expected_hmac = h.digest()[:15]
