@@ -63,23 +63,23 @@ public class Secp256k1 {
 
     static final short LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED = (short)65;
     static final short LENGTH_EC_PUBLIC_KEY_COMPRESSED   = (short)33;
-    static final short LENGTH_EC_PRIVATE_KEY             = (short)33;
+    static final short LENGTH_EC_PRIVATE_KEY             = (short)32;
 
     // constants from JavaCard 3.0.5
     private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6;
     private static final byte ALG_EC_PACE_GM          = 5;
 
-    static private KeyAgreement ecMult;
-    static private KeyAgreement ecMultX;
-    static private KeyAgreement ecAdd;
-    static private Signature sig;
-    static public  ECPrivateKey tempPrivateKey;
+    static private KeyAgreement  ecMult;
+    static private KeyAgreement  ecMultX;
+    static private KeyAgreement  ecAdd;
+    static private Signature     sig;
+    static public  ECPrivateKey  tempPrivateKey;
     static private TransientHeap heap;
 
     /**
      * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
      */
-    static public void init(TransientHeap hp) {
+    static public void init(TransientHeap hp){
         heap = hp;
         ecMult = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
         ecMultX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
@@ -94,7 +94,7 @@ public class Secp256k1 {
      *
      * @param key the key where the curve parameters must be set
      */
-    static public void setCommonCurveParameters(ECKey key) {
+    static public void setCommonCurveParameters(ECKey key){
         key.setA(SECP256K1_A, (short)0, (short)SECP256K1_A.length);
         key.setB(SECP256K1_B, (short)0, (short)SECP256K1_B.length);
         key.setFieldFP(SECP256K1_FP, (short)0, (short)SECP256K1_FP.length);
@@ -103,7 +103,7 @@ public class Secp256k1 {
         key.setK(SECP256K1_K);
     }
     /**
-     * Generates a new private-public keypair on Secp256k1 curve
+     * Generate a new private-public keypair on Secp256k1 curve
      * @return KeyPair instance with curve parameters set to Secp256k1
      */
     static public KeyPair newKeyPair(){
@@ -112,40 +112,106 @@ public class Secp256k1 {
         setCommonCurveParameters((ECPublicKey)kp.getPublic());
         return kp;
     }
-    // TODO: doesn't check if point is on the curve
-    static public void uncompress(byte[] point, short pOff,
-                           byte[] out, short outOff){
-        // allocate space for y coordinate and number 7...
-        short len = (short)64;
-        short off = heap.allocate(len);
-        byte[] buf = heap.buffer;
-        // calculate x^3
-        FiniteField.powShortModFP(point, (short)(pOff+1), (short)3, buf, off);
-        buf[(short)(off+63)]=0x07;
-        // add 7
-        FiniteField.addMod(buf, off, buf, (short)(off+32), buf, off, SECP256K1_FP, (short)0);
-        // square root
-        FiniteField.powModFP(buf, off, SECP256K1_ROOT, (short)0, buf, (short)(off+32));
-        // check sign and negate if necessary
-        if((point[pOff]-0x02) != (buf[(short)(off+63)]&0x01)){
-            FiniteField.subtract(SECP256K1_FP, (short)0, buf, (short)(off+32), buf, (short)(off+32), (short)1);
+    /**
+     * Check if the point is on the curve. Can be in compressed or uncompressed form.
+     * 
+     * @param point - buffer containing a point in (un)compressed form
+     * @param pOff  - offset in the buffer
+     * @return true if point is on the curve, false otherwise
+     * @throws ISOException if serialization format is wrong.
+     */
+    static public boolean verifyPointOnCurve(byte[] point, short pOff) throws ISOException{
+        // check first byte
+        if(point[pOff]>(byte)0x04 || point[pOff]<(byte)0x02){
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
-        Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, off, (short)32);
-        out[outOff] = (byte)0x04;
-        Util.arrayCopyNonAtomic(buf, off, out, (short)(outOff+1), (short)64);
+        // are we working with compressed or uncompressed point?
+        boolean compressed = (point[pOff]!=0x04);
+        // allocate memory for two field elements
+        short len = (short)(2*FiniteField.LENGTH_FIELD_ELEMENT);
+        byte[] buf = heap.buffer;
+        short off1 = heap.allocate(len);
+        short off2 = (short)(off1 + FiniteField.LENGTH_FIELD_ELEMENT);
+        short pOffX = (short)(pOff+1);
+        short pOffY = (short)(pOffX+FiniteField.LENGTH_FIELD_ELEMENT);
+        // first element is x^3
+        FiniteField.powShortModFP(point, pOffX, (short)3, buf, off1);
+        // second element is 7
+        buf[(short)(off2+FiniteField.LENGTH_FIELD_ELEMENT-1)]=0x07;
+        // first element is x^3+7 now
+        FiniteField.addMod(buf, off1, buf, off2, buf, off1, SECP256K1_FP, (short)0);
+        if(compressed){
+            // if we work with compressed - just copy Y to second element
+            Util.arrayCopyNonAtomic(point, pOffY, buf, off2, FiniteField.LENGTH_FIELD_ELEMENT);
+        }else{
+            // otherwise - do sqrt
+            // second element is a square root: sqrt(x^3+7)
+            FiniteField.powModFP(buf, off1, SECP256K1_ROOT, (short)0, buf, off2);
+        }
+        // calculate y^2 again and put it to the 2nd element
+        FiniteField.powShortModFP(buf, off2, (short)2, buf, off2);
+        // if they are the same - point is on the curve
+        boolean isValid = (Util.arrayCompare(buf, off1, buf, off2, FiniteField.LENGTH_FIELD_ELEMENT)==(byte)0);
         heap.free(len);
+        return isValid;
     }
     /**
-     * Compress uncompressed public key.
+     * Uncompress compressed public key. Doesn't check if it's on the curve.
+     * @param point  - buffer containing compressed public key 
+     * @param pOff   - offset of the point buffer
+     * @param out    - output buffer to write uncompressed pubkey to
+     * @param outOff - offset in the output buffer
+     * @return number of bytes written to the buffer (65)
+     */
+    static public short uncompress(
+                    byte[] point, short pOff,
+                    byte[] out, short outOff)
+    {
+        // check first byte
+        if(point[pOff]>(byte)0x03 || point[pOff]<(byte)0x02){
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        short pOffX = (short)(pOff+1);
+        // allocate space for three field elements
+        short len = (short)(2*FiniteField.LENGTH_FIELD_ELEMENT);
+        // offset of the first RAM element
+        short off1 = heap.allocate(len);
+        // offset of the second RAM element
+        short off2 = (short)(off1+FiniteField.LENGTH_FIELD_ELEMENT);
+        byte[] buf = heap.buffer;
+        // first element is x^3
+        FiniteField.powShortModFP(point, pOffX, (short)3, buf, off1);
+        // second element is 7
+        buf[(short)(off2+FiniteField.LENGTH_FIELD_ELEMENT-1)]=0x07;
+        // first element is x^3+7 now
+        FiniteField.addMod(buf, off1, buf, off2, buf, off1, SECP256K1_FP, (short)0);
+        // second element is a square root: sqrt(x^3+7)
+        FiniteField.powModFP(buf, off1, SECP256K1_ROOT, (short)0, buf, off2);
+        // check sign and negate if necessary
+        if((point[pOff]-0x02) != (buf[(short)(off2+FiniteField.LENGTH_FIELD_ELEMENT-1)]&0x01)){
+            FiniteField.subtract(SECP256K1_FP, (short)0, buf, off2, buf, off2, (short)1);
+        }
+        // copy x to the first element
+        Util.arrayCopyNonAtomic(point, (short)(pOff+1), buf, off1, FiniteField.LENGTH_FIELD_ELEMENT);
+        // set first byte
+        out[outOff] = (byte)0x04;
+        // copy x and y to the output
+        Util.arrayCopyNonAtomic(buf, off1, out, (short)(outOff+1), (short)(2*FiniteField.LENGTH_FIELD_ELEMENT));
+        heap.free(len);
+        return LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED;
+    }
+    /**
+     * Compress uncompressed public key. Doesn't check if the point is on the curve.
      * @param point  - buffer containing uncompressed public key 
      * @param pOff   - offset of the point buffer
      * @param out    - output buffer to write compressed pubkey to
      * @param outOff - offset in the output buffer
      * @return number of bytes written to the buffer (33)
-     * TODO: check that it's on the curve
      */
-    static public short compress(byte[] point, short pOff,
-                         byte[] out, short outOff){
+    static public short compress(
+                    byte[] point, short pOff,
+                    byte[] out, short outOff)
+    {
         // check first byte
         if(point[pOff]!=(byte)0x04){
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -168,8 +234,10 @@ public class Secp256k1 {
      * @param outOff     - offset in the buffer
      * @return number of bytes written to the buffer. 33 for compressed, 65 for uncompressed.
      */
-    static public short serialize(ECPublicKey key, boolean compressed, 
-                           byte[] out, short outOff){
+    static public short serialize(
+                    ECPublicKey key, boolean compressed, 
+                    byte[] out, short outOff)
+    {
         if(!compressed){
             return key.getW(out, outOff);
         }else{
@@ -184,8 +252,44 @@ public class Secp256k1 {
     }
     /**
      * Multiplies a scalar by a point and writes result to the output buffer. 
+     * Output public key is uses the same serialization form as the input public key.
      *
      * @param privateKey  - ECPrivateKey instance with the private key
+     * @param point       - buffer containing the point to multiply
+     * @param pointOffset - offset of the point buffer
+     * @param out         - output buffer to write result to
+     * @param outOffset   - offset in the output buffer
+     * @return number of bytes written to the output buffer
+     */
+    static public short pointMultiply(
+                    ECPrivateKey privateKey, 
+                    byte[] point, short pointOff, 
+                    byte[] out, short outOff)
+    {
+        ecMult.init(privateKey);
+        // check if compressed point is used or not
+        switch(point[pointOff]){
+            case (byte)0x04:
+                return ecMult.generateSecret(point, pointOff, LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED, out, outOff);
+            case (byte)0x03:
+            case (byte)0x02:
+                short len = LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED;
+                short off = heap.allocate(len);
+                short lenPoint = uncompress(point, pointOff, heap.buffer, off);
+                ecMult.generateSecret(heap.buffer, off, lenPoint, heap.buffer, off);
+                short lenOut = compress(heap.buffer, off, out, outOff);
+                heap.free(len);
+                return lenOut;
+            default:
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        return 0;
+    }
+    /**
+     * Multiplies a scalar by a point and writes result to the output buffer. 
+     *
+     * @param scalar      - buffer containing the private key
+     * @param scalarOff   - offset in the scalar buffer
      * @param point       - buffer containing the point to multiply
      * @param pointOffset - offset of the point buffer
      * @param pointLen    - length of the point (should be 65)
@@ -194,12 +298,12 @@ public class Secp256k1 {
      * @return number of bytes written to the output buffer
      */
     static public short pointMultiply(
-                    ECPrivateKey privateKey, 
-                    byte[] point, short pointOff, short pointLen, 
+                    byte scalar[], short scalarOff,
+                    byte[] point, short pointOff,
                     byte[] out, short outOff)
     {
-        ecMult.init(privateKey);
-        return ecMult.generateSecret(point, pointOff, pointLen, out, outOff);
+        tempPrivateKey.setS(scalar, scalarOff, LENGTH_EC_PRIVATE_KEY);
+        return pointMultiply(tempPrivateKey, point, pointOff, out, outOff);
     }
     /**
      * Creates a public key from private key and writes it to output buffer.
@@ -210,35 +314,63 @@ public class Secp256k1 {
      * @param outOff     - offset in the output buffer
      * @return number of bytes written to the output buffer
      */
-    static public short pubkeyCreate(
+    static public short getPublicKey(
                     ECPrivateKey privateKey, boolean compressed,
-                    byte[] out, short outOff){
+                    byte[] out, short outOff)
+    {
         if(compressed){
             short len = LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED;
             short off = heap.allocate(len);
             byte[] buf = heap.buffer;
             pointMultiply(privateKey, 
-                        SECP256K1_G, (short)0, (short)SECP256K1_G.length, 
+                        SECP256K1_G, (short)0, 
                         buf, off);
             short lenOut = compress(buf, off, out, outOff);
             heap.free(len);
             return lenOut;
         }else{
             return pointMultiply(privateKey, 
-                        SECP256K1_G, (short)0, (short)SECP256K1_G.length, 
+                        SECP256K1_G, (short)0,
                         out, outOff);
         }
     }
     /**
+     * Creates a public key from private key and writes it to output buffer.
+     * 
+     * @param privkey    - buffer containing private key
+     * @param privOff    - offset in the private key buffer
+     * @param compressed - a flag to serialize in compressed (33 bytes) or uncompressed form (65 bytes)
+     * @param out        - output buffer serialize pubkey to
+     * @param outOff     - offset in the output buffer
+     * @return number of bytes written to the output buffer
+     */
+    static public short getPublicKey(
+                    byte[] privkey, short privOff,
+                    boolean compressed,
+                    byte[] out, short outOff)
+    {
+        tempPrivateKey.setS(privkey, privOff, LENGTH_EC_PRIVATE_KEY);
+        return getPublicKey(tempPrivateKey, compressed, out, outOff);
+    }
+    /**
      * Adds tweak*G to the point. Returs P+tweak*G.
+     * <p>
      * If you want to add two points: P1 + P2
      * set tweak=1, tweak.G = P1, point = P2 -> you'll get it.
+     * 
+     * @param tweak  - ECPrivateKey instance with the private key
+     * @param point  - point to add secret*G to
+     * @param pOff   - offset of the point
+     * @param pLen   - length of the point (should be 65)
+     * @param out    - output buffer to write result to
+     * @param outOff - output offset
+     * @return number of bytes written to the output buffer
      */
     static public short tweakAdd(
                     ECPrivateKey tweak,
                     byte[] point, short pOff, short pLen,
-                    byte[] out, short outOff
-                ){
+                    byte[] out, short outOff)
+    {
         ecAdd.init(tweak);
         return ecAdd.generateSecret(point, pOff, pLen, out, outOff);
     }
@@ -281,9 +413,10 @@ public class Secp256k1 {
         return (short)(len+setLowS(out, outOffset));
     }
     /**
-     * Generates a random secret up to the group order. It is always a valid private key.
+     * Generates a random 32-byte secret up to the group order. It is always a valid private key.
      * @param buf - buffer where to put the secret
      * @param off - offset in the buffer
+     * @return number of bytes written to the buffer (32)
      */
     static public short generateRandomSecret(byte[] buf, short off){
         return FiniteField.getRandomElement(SECP256K1_R, (short)0, buf, off);

@@ -130,7 +130,8 @@ public class SecureChannel{
      */
     public short openChannelSS(byte[] hostPubkey, short hostPubkeyOff,
                                byte[] hostNonce,  short hostNonceOff,
-                               byte[] cardNonce,  short cardNonceOff){
+                               byte[] cardNonce,  short cardNonceOff)
+    {
         short len = MAX_KEY_SIZE;
         short off = heap.allocate(len);
         short ecdhLen = Secp256k1.ecdh( (ECPrivateKey)staticKeyPair.getPrivate(), 
@@ -162,7 +163,8 @@ public class SecureChannel{
      * @return number of bytes written to the nonce buffer
      */
     public short openChannelES(byte[] hostPubkey, short hostPubkeyOff,
-                               byte[] cardNonce,  short cardNonceOff){
+                               byte[] cardNonce,  short cardNonceOff)
+    {
         short len = MAX_KEY_SIZE;
         short off = heap.allocate(len);
         short ecdhLen = Secp256k1.ecdh( (ECPrivateKey)staticKeyPair.getPrivate(), 
@@ -191,14 +193,16 @@ public class SecureChannel{
      * @param cardPubkeyOff - offset where to start writing
      * @return number of bytes written to the nonce buffer
      */
-    public short openChannelEE(byte[] hostPubkey, short hostPubkeyOff,
-                               byte[] cardPubkey, short cardPubkeyOff){
+    public short openChannelEE(
+                    byte[] hostPubkey, short hostPubkeyOff,
+                    byte[] cardPubkey, short cardPubkeyOff)
+    {
         short len = MAX_KEY_SIZE;
         short off = heap.allocate(len);
-        Crypto.random.generateData(heap.buffer, off, EC_PRIVATE_KEY_SIZE);
-        ephemeralPrivateKey.setS(heap.buffer, off, EC_PRIVATE_KEY_SIZE);
+        Secp256k1.generateRandomSecret(heap.buffer, off);
+        ephemeralPrivateKey.setS(heap.buffer, off, Secp256k1.LENGTH_EC_PRIVATE_KEY);
         short ecdhLen = Secp256k1.ecdh( ephemeralPrivateKey, 
-                        hostPubkey, hostPubkeyOff, EC_PUBLIC_KEY_SIZE, 
+                        hostPubkey, hostPubkeyOff, Secp256k1.LENGTH_EC_PUBLIC_KEY_UNCOMPRESSED, 
                         heap.buffer, off);
         // calculating shared secret
         Crypto.sha256.reset();
@@ -206,8 +210,7 @@ public class SecureChannel{
         openChannel(heap.buffer, off, (short)Crypto.sha256.getLength());
         heap.free(len);
         // pubkey is just ECDH of private key with G
-        return Secp256k1.pointMultiply( ephemeralPrivateKey, 
-                        Secp256k1.SECP256K1_G, (short)0, (short)65, 
+        return Secp256k1.getPublicKey( ephemeralPrivateKey, false,
                         cardPubkey, cardPubkeyOff);
     }
     /**
@@ -265,7 +268,8 @@ public class SecureChannel{
      * @return number of bytes written to the buffer
      */
     public short authenticateData(byte[] data, short dataOffset, short dataLen, 
-                                  byte[] out, short outOffset){
+                                  byte[] out, short outOffset)
+    {
         short len = Crypto.hmacSha256.getLength();
         short off = heap.allocate(len);
         Crypto.hmacSha256.init(cardMACKey, (short)0, (short)cardMACKey.length);
@@ -291,7 +295,8 @@ public class SecureChannel{
      * @return number of bytes written to the output buffer
      */
     public short signData(byte[] data, short dataOffset, short dataLen, 
-                                 byte[] out, short outOffset){
+                          byte[] out, short outOffset)
+    {
         short len = (short)Crypto.sha256.getLength();
         short off = heap.allocate(len);
 
@@ -311,7 +316,8 @@ public class SecureChannel{
      * @return number of bytes of the resulting plaintext message
      */
     public short decryptMessage(byte[] ct, short ctOffset, short ctLen, 
-                                       byte[] out, short outOffset){
+                                byte[] out, short outOffset)
+    {
         // message should contain at least one block
         // and cyphertext without MAC should be % AES_BLOCK_SIZE
         if( (ctLen < (short)(AES_BLOCK_SIZE+MAC_SIZE)) || 
@@ -349,7 +355,8 @@ public class SecureChannel{
      * @return number of bytes written to the output buffer
      */
     public short encryptMessage(byte[] data, short offset, short dataLen, 
-                                       byte[] cyphertext, short ctOffset){
+                                byte[] cyphertext, short ctOffset)
+    {
         // check that plaintext will fit in max cyphertext length
         if(dataLen > MAX_PLAIN_SIZE){
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);

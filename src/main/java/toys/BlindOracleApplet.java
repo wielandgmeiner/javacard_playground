@@ -175,7 +175,7 @@ public class BlindOracleApplet extends SecureApplet{
                                     childXpub, (short)0);
                 childPrv.setS(childXpub, Bitcoin.HDKEY_PRV_KEY_OFFSET, (short)32);
                 // replace private key with public
-                Secp256k1.pubkeyCreate(childPrv, true, childXpub, Bitcoin.HDKEY_PUB_KEY_OFFSET);
+                Secp256k1.getPublicKey(childPrv, true, childXpub, Bitcoin.HDKEY_PUB_KEY_OFFSET);
                 Util.arrayCopyNonAtomic(childXpub, (short)0, buf, (short)2, Bitcoin.HDKEY_LEN);
                 return (short)(2+Bitcoin.HDKEY_LEN);
             case SUBCMD_BIP32_SIGN:
@@ -201,7 +201,7 @@ public class BlindOracleApplet extends SecureApplet{
         // child will be the same at first
         childPrv.setS(rootXpub, Bitcoin.HDKEY_PRV_KEY_OFFSET, (short)32);
         // replace private key with public
-        Secp256k1.pubkeyCreate(rootPrv, true, rootXpub, Bitcoin.HDKEY_PUB_KEY_OFFSET);
+        Secp256k1.getPublicKey(rootPrv, true, rootXpub, Bitcoin.HDKEY_PUB_KEY_OFFSET);
         // child will be the same at first
         Util.arrayCopyNonAtomic(rootXpub, (short)0, childXpub, (short)0, Bitcoin.HDKEY_LEN);
     }

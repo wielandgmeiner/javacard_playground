@@ -124,7 +124,7 @@ public class Bitcoin{
         // if private - put public there instead
         if(isPrivate){
             Secp256k1.tempPrivateKey.setS(heap.buffer, (short)(off+HDKEY_PRV_KEY_OFFSET), (short)32);
-            Secp256k1.pubkeyCreate(Secp256k1.tempPrivateKey, true, heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET));
+            Secp256k1.getPublicKey(Secp256k1.tempPrivateKey, true, heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET));
         }
         // calc hash160
         Crypto.hash160(heap.buffer, (short)(off+HDKEY_PUB_KEY_OFFSET), (short)33, 
@@ -150,8 +150,7 @@ public class Bitcoin{
             Crypto.hmacSha512.update(xprv, (short)(xprvOff+32), (short)33);            
         }else{
             Secp256k1.tempPrivateKey.setS(xprv, (short)(xprvOff+33), (short)32);
-            Secp256k1.pointMultiply(Secp256k1.tempPrivateKey, Secp256k1.SECP256K1_G, (short)0, (short)65, buf, off);
-            buf[off] = (byte)(0x02+(buf[(short)(off+64)] & 1));
+            Secp256k1.getPublicKey(xprv, (short)(xprvOff+33), true, buf, off);
             Crypto.hmacSha512.update(buf, off, (short)33);
         }
         // add index

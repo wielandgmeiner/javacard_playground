@@ -116,8 +116,7 @@ public class SingleUseKeyApplet extends SecureApplet{
         prv.setS(tempBuf, (short)0, (short)32);
         
         ECPublicKey pub = (ECPublicKey)singleUseKeyPair.getPublic();
-        Secp256k1.pointMultiply(prv,
-                                Secp256k1.SECP256K1_G, (short)0, (short)65,
+        Secp256k1.getPublicKey(prv, false,
                                 tempBuf, (short)0);
         pub.setW(tempBuf, (short)0, (short)65);
     }
